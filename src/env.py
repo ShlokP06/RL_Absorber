@@ -26,7 +26,7 @@ Observation (17-dim, normalised [-1, 1])
 [8]     L_cmd                     commanded L (lag signal)
 [9-10]  capture, energy           process outputs
 [11-12] d_capture, d_energy       rate of change (derivative signal)
-[13]    cap_integral              accumulated capture deficit (integral)
+[13]    cap_integral              accumulated capture deficit below 90% (integral)
 [14]    flood_proximity           constraint headroom = 1 - ff/0.79
 [15]    lambda_energy             Pareto weight (goal conditioning)
 [16]    T_ic_cmd                  commanded intercooler (lag signal)
@@ -64,12 +64,12 @@ class CCUEnv(gym.Env):
                  model_path      = "models/surrogate/model.pt",
                  scaler_path     = "models/surrogate/scalers.pkl",
                  max_steps       = 120,
-                 lambda_range    = (0.02, 0.15),
-                 lam_smooth      = 0.02,
+                 lambda_range    = (0.0, 0.05),
+                 lam_smooth      = 0.005,
                  lam_integral    = 0.10,
                  lam_energy_int  = 0.05,
                  lam_recover     = 0.20,
-                 lam_flood       = 1.00,
+                 lam_flood       = 0.25,
                  step_prob       = 0.04,
                  actuator_lag    = True,
                  obs_noise       = True,
@@ -100,10 +100,10 @@ class CCUEnv(gym.Env):
         self.T_lo,  self.T_hi  = CTRL["T_L_in"]
         self.ic_lo, self.ic_hi = CTRL["T_ic"]
 
-        self.dL  = 0.05 * (self.L_hi  - self.L_lo)
-        self.dal = 0.05 * (self.al_hi - self.al_lo)
-        self.dT  = 0.05 * (self.T_hi  - self.T_lo)
-        self.dic = 0.05 * (self.ic_hi - self.ic_lo)
+        self.dL  = 0.10 * (self.L_hi  - self.L_lo)
+        self.dal = 0.10 * (self.al_hi - self.al_lo)
+        self.dT  = 0.10 * (self.T_hi  - self.T_lo)
+        self.dic = 0.10 * (self.ic_hi - self.ic_lo)
 
         self.observation_space = spaces.Box(
             -np.ones(17, np.float32), np.ones(17, np.float32), dtype=np.float32)
@@ -244,10 +244,10 @@ class CCUEnv(gym.Env):
     def _reward(self, action):
         da  = float(np.mean(np.abs(action - self.prev_act)))
         rec = 0.0
-        if self.below and self.cap >= 80.0:
+        if self.below and self.cap >= 90.0:
             rec = self.lam_rec * self.cap / 100.0
             self.below = False
-        elif self.cap < 80.0:
+        elif self.cap < 90.0:
             self.below = True
 
         fl_pen = (self.lam_fl * min((self.ff - 0.70) / 0.10, 3.0)
@@ -302,7 +302,7 @@ class CCUEnv(gym.Env):
         self.cap, self.eng = self._query()
         self.prev_cap, self.prev_eng = self.cap, self.eng
         self.cap_int = self.eng_int = 0.0
-        self.below   = self.cap < 80.0
+        self.below   = self.cap < 90.0
         self.prev_act = np.zeros(4, np.float32)
         self.t = 0
         return self._obs(), {}
@@ -332,7 +332,7 @@ class CCUEnv(gym.Env):
 
         # 5. Controller signals
         self.cap_int = float(np.clip(
-            self.cap_int + max(0.0, 80.0 - self.cap)/100.0 - 0.008, 0.0, 10.0))
+            self.cap_int + max(0.0, 90.0 - self.cap)/100.0 - 0.010, 0.0, 10.0))
         self.eng_int = float(np.clip(
             self.eng_int + max(0.0, self.eng - 7.0)/10.0  - 0.005, 0.0, 10.0))
 

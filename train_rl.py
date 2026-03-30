@@ -36,7 +36,6 @@ from stable_baselines3.common.callbacks import (
     BaseCallback, EvalCallback, CheckpointCallback,
 )
 from sb3_contrib import RecurrentPPO
-from sb3_contrib import RecurrentPPO
 
 sys.path.insert(0, str(Path(__file__).parent))
 from src.env import CCUEnv
@@ -150,7 +149,7 @@ def train(args):
                      best_model_save_path=str(RL_DIR / "best"),
                      log_path="logs",
                      eval_freq=max(args.eval_freq // args.n_envs, 1),
-                     n_eval_episodes=30, deterministic=True, verbose=1),
+                     n_eval_episodes=50, deterministic=True, verbose=1),
         CheckpointCallback(save_freq=max(100_000 // args.n_envs, 1),
                            save_path=str(RL_DIR / "checkpoints"),
                            name_prefix="ppo_ccu", verbose=1),
@@ -160,20 +159,20 @@ def train(args):
         policy        = "MlpLstmPolicy",
         env           = train_env,
         learning_rate = args.lr,
-        n_steps       = 1024,
-        batch_size    = 128,
-        device = 'cuda' if torch.cuda.is_available() else 'cpu', 
+        n_steps       = 2048,
+        batch_size    = 512,
+        device        = 'cuda' if torch.cuda.is_available() else 'cpu',
         n_epochs      = 10,
         gamma         = 0.99,
         gae_lambda    = 0.95,
         clip_range    = 0.2,
-        ent_coef      = 0.005,
+        ent_coef      = 0.01,
         vf_coef       = 0.5,
         max_grad_norm = 0.5,
         policy_kwargs = dict(
             lstm_hidden_size = args.lstm_hidden,
             n_lstm_layers    = 2,
-            net_arch         = dict(pi=[128, 128], vf=[128, 128]),
+            net_arch         = dict(pi=[256, 256], vf=[256, 256]),
         ),
         tensorboard_log = "logs/",
         verbose         = 1,
@@ -223,21 +222,21 @@ def main():
     p.add_argument("--model-path",  default="models/surrogate/model.pt")
     p.add_argument("--scaler-path", default="models/surrogate/scalers.pkl")
     p.add_argument("--max-steps",   type=int,   default=120)
-    p.add_argument("--lam-min",     type=float, default=0.02)
-    p.add_argument("--lam-max",     type=float, default=0.15)
-    p.add_argument("--lam-smooth",  type=float, default=0.01)
-    p.add_argument("--lam-I",       type=float, default=0.02)
-    p.add_argument("--lam-Ie",      type=float, default=0.01)
-    p.add_argument("--lam-rec",     type=float, default=0.10)
-    p.add_argument("--lam-flood",   type=float, default=0.30)
+    p.add_argument("--lam-min",     type=float, default=0.0)
+    p.add_argument("--lam-max",     type=float, default=0.05)
+    p.add_argument("--lam-smooth",  type=float, default=0.005)
+    p.add_argument("--lam-I",       type=float, default=0.10)
+    p.add_argument("--lam-Ie",      type=float, default=0.05)
+    p.add_argument("--lam-rec",     type=float, default=0.20)
+    p.add_argument("--lam-flood",   type=float, default=0.25)
     p.add_argument("--step-prob",   type=float, default=0.04)
-    p.add_argument("--phase1",      type=int,   default=150_000)
-    p.add_argument("--phase2",      type=int,   default=350_000)
-    p.add_argument("--timesteps",   type=int,   default=500_000)
-    p.add_argument("--lr",          type=float, default=1e-3)
-    p.add_argument("--n-envs",      type=int,   default=4)
-    p.add_argument("--lstm-hidden", type=int,   default=128)
-    p.add_argument("--eval-freq",   type=int,   default=10_000)
+    p.add_argument("--phase1",      type=int,   default=200_000)
+    p.add_argument("--phase2",      type=int,   default=600_000)
+    p.add_argument("--timesteps",   type=int,   default=2_000_000)
+    p.add_argument("--lr",          type=float, default=3e-4)
+    p.add_argument("--n-envs",      type=int,   default=16)
+    p.add_argument("--lstm-hidden", type=int,   default=512)
+    p.add_argument("--eval-freq",   type=int,   default=25_000)
     p.add_argument("--eval-only",   action="store_true")
     p.add_argument("--model",       default="models/rl/ppo_ccu_dense.zip")
     args = p.parse_args()

@@ -244,7 +244,7 @@ def run_scenario(surrogate: SurrogatePredictor,
     rl_env.cap, rl_env.eng = cap0, eng0
     rl_env.prev_cap = cap0; rl_env.prev_eng = eng0
     rl_env.cap_int  = 0.0;  rl_env.eng_int  = 0.0
-    rl_env.below    = cap0 < 80.0
+    rl_env.below    = cap0 < 90.0
     rl_env.t        = 0
     obs = rl_env._obs()
     lstm_state = None
