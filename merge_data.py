@@ -35,7 +35,7 @@ def main():
         if "valid" in df.columns:
             df = df[df["valid"] == True]
         frames.append(df)
-        print(f"  {Path(path).name:<30} {n_before:>6} rows  →  {len(df):>6} valid")
+        print(f"  {Path(path).name:<30} {n_before:>6} rows  ->  {len(df):>6} valid")
 
     merged = pd.concat(frames, ignore_index=True)
     print(f"\n  Total before dedup : {len(merged):,}")
@@ -46,11 +46,11 @@ def main():
     print(f"\n  Output ranges:")
     for col in X_COLS + Y_COLS:
         v = merged[col]
-        print(f"    {col:<20} {v.min():.4f} – {v.max():.4f}  (μ={v.mean():.4f})")
+        print(f"    {col:<20} {v.min():.4f} - {v.max():.4f}  (mean={v.mean():.4f})")
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     merged.to_csv(out, index=False)
-    print(f"\n  Saved {len(merged):,} points → {out}")
+    print(f"\n  Saved {len(merged):,} points -> {out}")
 
 if __name__ == "__main__":
     main()

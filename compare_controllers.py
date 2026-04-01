@@ -6,8 +6,8 @@ on the MEA CCU absorber-stripper process.
 
 Scenarios
 ---------
-1. Step change in G_gas (load increase: 1.0 → 1.8 kg/m²/s)
-2. Step change in y_CO2_in (composition change: 0.10 → 0.18)
+1. Step change in G_gas (load increase: 0.8 → 1.25 kg/m²/s)
+2. Step change in y_CO2_in (composition change: 0.08 → 0.16)
 3. Combined disturbance (both simultaneously)
 
 Output
@@ -62,6 +62,8 @@ class PIDController:
     """
     Independent PID loop for one controlled variable.
     Uses anti-windup on the integral term.
+    Output = bias + Kp*error + Ki*integral + Kd*derivative,
+    where bias is the nominal operating point.
     """
     Kp: float
     Ki: float
@@ -69,6 +71,7 @@ class PIDController:
     setpoint: float
     out_lo: float
     out_hi: float
+    bias: float = 0.0
     integral: float = 0.0
     prev_error: float = 0.0
     integral_limit: float = 10.0
@@ -79,7 +82,7 @@ class PIDController:
             self.integral + error, -self.integral_limit, self.integral_limit)
         derivative    = error - self.prev_error
         self.prev_error = error
-        out = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
+        out = self.bias + self.Kp * error + self.Ki * self.integral + self.Kd * derivative
         return float(np.clip(out, self.out_lo, self.out_hi))
 
     def reset(self):
@@ -109,24 +112,28 @@ class ThreeLoopPID:
 
     def __init__(self):
         # L_liq PID: increases solvent flow when capture drops
+        # bias=L_NOM so output centres on the nominal operating point
         self.pid_L = PIDController(
-            Kp=0.08, Ki=0.015, Kd=0.02,
+            Kp=0.40, Ki=0.06, Kd=0.10,
             setpoint=self.CAP_SP,
             out_lo=2.0, out_hi=12.0,
-            integral_limit=15.0,
+            bias=self.L_NOM,
+            integral_limit=20.0,
         )
         # alpha_lean PID: leans solvent when capture is low
         self.pid_al = PIDController(
-            Kp=-0.002, Ki=-0.0005, Kd=-0.0005,
+            Kp=-0.008, Ki=-0.002, Kd=-0.002,
             setpoint=self.CAP_SP,
             out_lo=0.18, out_hi=0.38,
-            integral_limit=10.0,
+            bias=self.AL_NOM,
+            integral_limit=15.0,
         )
         # T_L_in PID: cools lean solvent when capture drops
         self.pid_T = PIDController(
-            Kp=-0.15, Ki=-0.03, Kd=-0.05,
+            Kp=-0.60, Ki=-0.10, Kd=-0.15,
             setpoint=self.CAP_SP,
             out_lo=30.0, out_hi=55.0,
+            bias=self.T_NOM,
             integral_limit=20.0,
         )
 

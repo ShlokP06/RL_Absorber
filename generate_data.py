@@ -82,7 +82,7 @@ def sanity_check():
     print()
 
 
-def generate(n, seed, out, bounds, save_every=500):
+def generate(n, seed, out, bounds, save_every=5000):
     keys    = list(bounds.keys())
     lo      = np.array([bounds[k][0] for k in keys])
     hi      = np.array([bounds[k][1] for k in keys])
@@ -147,8 +147,8 @@ def generate(n, seed, out, bounds, save_every=500):
     print(f"  {len(dv)} valid / {n} attempted ({len(dv)/n*100:.1f}%)  errors={n_err}")
     for col in ["capture_rate", "E_specific_GJ", "alpha_lean", "T_ic_C", "delta_alpha"]:
         v = dv[col]
-        print(f"  {col:<20} {v.min():.3f} – {v.max():.3f}  (μ={v.mean():.3f})")
-    print(f"  Saved → {out}")
+        print(f"  {col:<20} {v.min():.3f} - {v.max():.3f}  (mean={v.mean():.3f})")
+    print(f"  Saved: {out}")
     print("=" * 55)
     return dv
 

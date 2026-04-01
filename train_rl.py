@@ -32,7 +32,7 @@ import pandas as pd
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import VecNormalize, SubprocVecEnv
+from stable_baselines3.common.vec_env import VecNormalize, SubprocVecEnv, DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import (
     BaseCallback, EvalCallback, CheckpointCallback,
@@ -43,6 +43,15 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.env import CCUEnv
 
 RL_DIR = Path("models/rl")
+
+
+# ── Learning rate schedule ───────────────────────────────────────────────────
+
+def linear_schedule(initial_value: float):
+    """Linear decay from initial_value to 0 over training."""
+    def func(progress_remaining: float) -> float:
+        return progress_remaining * initial_value
+    return func
 
 
 # ── Picklable env factory (required for SubprocVecEnv on Windows) ─────────────
@@ -121,7 +130,7 @@ def train(args):
         lam_smooth      = args.lam_smooth,
         lam_integral    = args.lam_I,
         lam_energy_int  = args.lam_Ie,
-        lam_recover     = args.lam_rec,
+        lam_above       = args.lam_above,
         lam_flood       = args.lam_flood,
         step_prob       = args.step_prob,
         actuator_lag    = True,
@@ -163,9 +172,9 @@ def train(args):
     model = RecurrentPPO(
         policy        = "MlpLstmPolicy",
         env           = train_env,
-        learning_rate = args.lr,
-        n_steps       = 2048,
-        batch_size    = 512,
+        learning_rate = linear_schedule(args.lr),
+        n_steps       = 128,
+        batch_size    = 1024,
         device        = 'cuda' if torch.cuda.is_available() else 'cpu',
         n_epochs      = 10,
         gamma         = 0.99,
@@ -205,13 +214,25 @@ def train(args):
 # ── Eval only ─────────────────────────────────────────────────────────────────
 
 def eval_only(args):
-    env = Monitor(CCUEnv(
+    eval_kwargs = dict(
         model_path=args.model_path, scaler_path=args.scaler_path,
         max_steps=args.max_steps,
         lambda_range=(args.lam_min, args.lam_max),
         step_prob=0.0, obs_noise=False, domain_rand=False,
         continue_prob=0.0, curriculum_phase=2,
-    ))
+    )
+    venv = DummyVecEnv([partial(_make_env, **eval_kwargs)])
+
+    vecnorm_path = Path(args.vecnorm)
+    if vecnorm_path.exists():
+        env = VecNormalize.load(str(vecnorm_path), venv)
+        env.training = False
+        env.norm_reward = False
+        print(f"Loaded VecNormalize stats: {vecnorm_path}")
+    else:
+        print(f"WARNING: {vecnorm_path} not found — using unnormalized env")
+        env = VecNormalize(venv, norm_obs=True, norm_reward=False, clip_obs=10.0)
+
     model = RecurrentPPO.load(args.model, env=env)
     print(f"Loaded: {args.model}")
     df = evaluate(model, env, n=500)
@@ -228,23 +249,25 @@ def main():
     p.add_argument("--scaler-path", default="models/surrogate/scalers.pkl")
     p.add_argument("--max-steps",   type=int,   default=120)
     p.add_argument("--lam-min",     type=float, default=0.0)
-    p.add_argument("--lam-max",     type=float, default=0.05)
-    p.add_argument("--lam-smooth",  type=float, default=0.005)
-    p.add_argument("--lam-I",       type=float, default=0.10)
-    p.add_argument("--lam-Ie",      type=float, default=0.05)
-    p.add_argument("--lam-rec",     type=float, default=0.20)
-    p.add_argument("--lam-flood",   type=float, default=0.25)
+    p.add_argument("--lam-max",     type=float, default=0.20)
+    p.add_argument("--lam-smooth",  type=float, default=0.030)
+    p.add_argument("--lam-I",       type=float, default=0.15)
+    p.add_argument("--lam-Ie",      type=float, default=0.08)
+    p.add_argument("--lam-above",   type=float, default=0.10)
+    p.add_argument("--lam-flood",   type=float, default=0.15)
     p.add_argument("--step-prob",   type=float, default=0.04)
     p.add_argument("--phase1",      type=int,   default=200_000)
     p.add_argument("--phase2",      type=int,   default=600_000)
     p.add_argument("--timesteps",   type=int,   default=2_000_000)
     p.add_argument("--lr",          type=float, default=3e-4)
-    p.add_argument("--n-envs",      type=int,   default=16)
+    p.add_argument("--n-envs",      type=int,   default=64)
     p.add_argument("--lstm-hidden", type=int,   default=512)
     p.add_argument("--eval-freq",   type=int,   default=25_000)
     p.add_argument("--eval-envs",   type=int,   default=50)
     p.add_argument("--eval-only",   action="store_true")
     p.add_argument("--model",       default="models/rl/ppo_ccu_dense.zip")
+    p.add_argument("--vecnorm",     default="models/rl/vecnorm.pkl",
+                   help="Path to VecNormalize stats for eval-only mode")
     args = p.parse_args()
 
     if args.eval_only:

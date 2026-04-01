@@ -120,8 +120,9 @@ def enhancement(T_K, alpha, D_L, kL_, D_M):
     C_i   = max(p_star(alpha, T_K) / H_phys(T_K), 0.05)
     E_inf = float(np.clip(
         1.0 + D_M * free_MEA(alpha, T_K) / (2.0 * D_L * C_i), 2.0, 2000.0))
-    disc  = Ha**4 / (4.0 * E_inf**2) + Ha**2 + 1.0
-    E     = -Ha**2 / (2.0 * E_inf) + np.sqrt(max(disc, 0.0))
+    Ei    = max(E_inf - 1.0, 1.0)
+    disc  = Ha**4 / (4.0 * Ei**2) + E_inf * Ha**2 / Ei + 1.0
+    E     = -Ha**2 / (2.0 * Ei) + np.sqrt(max(disc, 0.0))
     return float(np.clip(E, 1.0, E_inf)), Ha
 
 

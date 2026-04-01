@@ -43,6 +43,9 @@ class CCUSurrogate(nn.Module):
             if isinstance(m, nn.Linear):
                 nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
                 nn.init.zeros_(m.bias)
+        # Output layer has no activation — use Xavier instead of Kaiming/ReLU
+        nn.init.xavier_uniform_(self.net[-1].weight)
+        nn.init.zeros_(self.net[-1].bias)
 
     def forward(self, x):
         return self.net(x)

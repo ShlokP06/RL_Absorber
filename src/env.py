@@ -64,12 +64,12 @@ class CCUEnv(gym.Env):
                  model_path      = "models/surrogate/model.pt",
                  scaler_path     = "models/surrogate/scalers.pkl",
                  max_steps       = 120,
-                 lambda_range    = (0.0, 0.05),
-                 lam_smooth      = 0.005,
-                 lam_integral    = 0.10,
-                 lam_energy_int  = 0.05,
-                 lam_recover     = 0.20,
-                 lam_flood       = 0.25,
+                 lambda_range    = (0.0, 0.20),
+                 lam_smooth      = 0.030,
+                 lam_integral    = 0.15,
+                 lam_energy_int  = 0.08,
+                 lam_above       = 0.10,
+                 lam_flood       = 0.15,
                  step_prob       = 0.04,
                  actuator_lag    = True,
                  obs_noise       = True,
@@ -84,7 +84,7 @@ class CCUEnv(gym.Env):
         self.lam_smooth   = lam_smooth
         self.lam_I        = lam_integral
         self.lam_Ie       = lam_energy_int
-        self.lam_rec      = lam_recover
+        self.lam_above    = lam_above
         self.lam_fl       = lam_flood
         self.step_prob    = step_prob
         self.act_lag      = actuator_lag
@@ -123,7 +123,6 @@ class CCUEnv(gym.Env):
         self.cap = self.eng = self.prev_cap = self.prev_eng = None
         self.cap_int = self.eng_int = 0.0
         self.ff = 0.0
-        self.below = False
         self.lam = None
         self.drand = 1.0
         self.prev_act = np.zeros(4, np.float32)
@@ -207,7 +206,7 @@ class CCUEnv(gym.Env):
             T_L_in_C=self.T_act, alpha_lean=self.al_act, T_ic_C=self.ic_act,
         )
         cap = float(np.clip(r["capture_rate"] * self.drand, 0.0, 100.0))
-        eng = float(np.clip(r["E_specific_GJ"], 0.5, 50.0))
+        eng = float(np.clip(r["E_specific_GJ"] * self.drand, 0.5, 50.0))
         if self.obs_noise:
             cap = float(np.clip(cap + self.np_random.normal(0, NOISE["capture"]),
                                 0.0, 100.0))
@@ -242,23 +241,31 @@ class CCUEnv(gym.Env):
     # ── Reward ────────────────────────────────────────────────────────────────
 
     def _reward(self, action):
-        da  = float(np.mean(np.abs(action - self.prev_act)))
-        rec = 0.0
-        if self.below and self.cap >= 90.0:
-            rec = self.lam_rec * self.cap / 100.0
-            self.below = False
-        elif self.cap < 90.0:
-            self.below = True
+        # Squared action change — stronger penalty on large jumps
+        da2 = float(np.mean((action - self.prev_act) ** 2))
 
-        fl_pen = (self.lam_fl * min((self.ff - 0.70) / 0.10, 3.0)
-                  if self.ff > 0.70 else 0.0)
+        # Shaped capture: quadratic amplifies difference between 75% and 95%
+        cap_n = self.cap / 100.0
+        cap_reward = cap_n ** 2
 
-        r = (self.cap / 100.0
-             - self.lam * self.eng / 10.0
-             - self.lam_smooth * da
+        # Sustained above-target bonus (replaces one-shot recovery bonus
+        # which created a perverse incentive to oscillate around 90%)
+        above = self.lam_above if self.cap >= 90.0 else 0.0
+
+        # Energy penalty — normalised to [0, ~1] over typical operating range
+        eng_pen = self.lam * (self.eng - 3.5) / 3.0
+
+        # Flood soft penalty (narrower zone; hard constraint does the safety work)
+        fl_pen = (self.lam_fl * min((self.ff - 0.75) / 0.05, 2.0)
+                  if self.ff > 0.75 else 0.0)
+
+        r = (cap_reward
+             + above
+             - eng_pen
+             - self.lam_smooth * da2
              - self.lam_I  * max(self.cap_int, 0.0)
              - self.lam_Ie * max(self.eng_int,  0.0)
-             + rec - fl_pen)
+             - fl_pen)
 
         info = dict(
             capture_rate=self.cap, E_specific_GJ=self.eng,
@@ -302,7 +309,6 @@ class CCUEnv(gym.Env):
         self.cap, self.eng = self._query()
         self.prev_cap, self.prev_eng = self.cap, self.eng
         self.cap_int = self.eng_int = 0.0
-        self.below   = self.cap < 90.0
         self.prev_act = np.zeros(4, np.float32)
         self.t = 0
         return self._obs(), {}
@@ -330,11 +336,11 @@ class CCUEnv(gym.Env):
         self.prev_cap, self.prev_eng = self.cap, self.eng
         self.cap, self.eng = self._query()
 
-        # 5. Controller signals
+        # 5. Controller signals (exponential decay instead of constant)
         self.cap_int = float(np.clip(
-            self.cap_int + max(0.0, 90.0 - self.cap)/100.0 - 0.010, 0.0, 10.0))
+            self.cap_int * 0.95 + max(0.0, 90.0 - self.cap) / 100.0, 0.0, 5.0))
         self.eng_int = float(np.clip(
-            self.eng_int + max(0.0, self.eng - 7.0)/10.0  - 0.005, 0.0, 10.0))
+            self.eng_int * 0.95 + max(0.0, self.eng - 5.0) / 10.0,  0.0, 5.0))
 
         # 6. Reward
         reward, info = self._reward(action)
