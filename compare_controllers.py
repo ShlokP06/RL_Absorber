@@ -189,9 +189,6 @@ class ThreeLoopPID:
             T_L_in=self.T_act, T_ic=self.T_ic,
         )
 
-
-# ── Observation normalizer ────────────────────────────────────────────────────
-
 def _normalize_obs(norm_env, obs: np.ndarray) -> np.ndarray:
     """Normalize a raw CCUEnv observation using VecNormalize running stats.
 
@@ -212,16 +209,11 @@ def _normalize_obs(norm_env, obs: np.ndarray) -> np.ndarray:
     normalized = (obs - obs_rms.mean) / np.sqrt(obs_rms.var + norm_env.epsilon)
     return np.clip(normalized, -norm_env.clip_obs, norm_env.clip_obs).astype(np.float32)
 
-
-# =============================================================================
-# SIMULATION RUNNER
-# =============================================================================
-
 def run_scenario(
     surrogate: SurrogatePredictor,
     rl_model,
     scenario: Dict,
-    n_steps: int = 60,
+    n_steps: int = 50,
     lam: float = 0.05,
     lam_max: float = 0.10,
     norm_env=None,
@@ -249,7 +241,6 @@ def run_scenario(
     y_init  = scenario["y_init"]
     y_final = scenario["y_final"]
 
-    # ── Initial steady-state ──────────────────────────────────────────────────
     L0  = 5.0; al0 = 0.27; T0 = 40.0; ic0 = 38.0
     r0   = surrogate.predict(
         G_gas=G_init, L_liq=L0, y_CO2_in=y_init,
@@ -258,7 +249,6 @@ def run_scenario(
     cap0 = r0["capture_rate"]
     eng0 = r0["E_specific_GJ"]
 
-    # ── Storage ───────────────────────────────────────────────────────────────
     def empty() -> np.ndarray:
         return np.zeros(n_steps)
 
@@ -274,9 +264,6 @@ def run_scenario(
         "pid_flood"   : empty(),
     }
 
-    # ── RL setup ──────────────────────────────────────────────────────────────
-    # lambda_range must match training so obs[15] is correctly normalised.
-    # lam_max is the same --lam-max used during train_rl.py (default 0.10).
     rl_env = CCUEnv(
         model_path="models/surrogate/model.pt",
         scaler_path="models/surrogate/scalers.pkl",
@@ -288,7 +275,6 @@ def run_scenario(
         continue_prob=0.0,
         curriculum_phase=0,
     )
-    # Reset with fixed seed then override state to match scenario initial conditions
     rl_env.reset(seed=0)
     rl_env.G       = G_init;  rl_env.G_mean = G_init
     rl_env.y       = y_init;  rl_env.y_mean = y_init
@@ -306,14 +292,11 @@ def run_scenario(
     lstm_state    = None
     episode_start = np.array([True])
     prev_rl_action = np.zeros(4, np.float32)
-
-    # ── PID setup ─────────────────────────────────────────────────────────────
     pid = ThreeLoopPID()
     pid.reset()
     pid_cap = cap0
     pid_eng = eng0
 
-    # ── Simulation loop ───────────────────────────────────────────────────────
     for t in range(n_steps):
         G = G_final if t >= disturbance_step else G_init
         y = y_final if t >= disturbance_step else y_init
@@ -321,10 +304,8 @@ def run_scenario(
         data["G_gas"][t] = G
         data["y_CO2"][t] = y
 
-        # ── RL step ───────────────────────────────────────────────────────────
-        # Override disturbances directly — bypass OU update
-        rl_env.G      = G; rl_env.G_mean = G
-        rl_env.y      = y; rl_env.y_mean = y
+        rl_env.G = G; rl_env.G_mean = G
+        rl_env.y = y; rl_env.y_mean = y
         rl_env.G_trend = 0.0; rl_env.y_trend = 0.0
 
         action, lstm_state = rl_model.predict(
@@ -336,18 +317,13 @@ def run_scenario(
 
         raw_obs, _, _, _, info_rl = rl_env.step(action)
         obs = _normalize_obs(norm_env, raw_obs)
-
-        # Re-override in case OU moved the disturbance state
         rl_env.G = G; rl_env.y = y
-
-        # Compute pseudo-reward for RL (using same reward formula)
         cap_n = info_rl["capture_rate"] / 100.0
         above = rl_env.lam_above * max(0.0, info_rl["capture_rate"] - 85.0) / 15.0
         eng_pen = lam * (info_rl["E_specific_GJ"] - 3.5) / 3.0
         da2 = float(np.mean((action - prev_rl_action) ** 2))
         rl_reward = cap_n ** 2 + above - eng_pen - rl_env.lam_smooth * da2
         prev_rl_action = action.copy()
-
         data["rl_capture"][t] = info_rl["capture_rate"]
         data["rl_energy"][t]  = info_rl["E_specific_GJ"]
         data["rl_L"][t]       = info_rl["L_liq"]
@@ -357,7 +333,6 @@ def run_scenario(
         data["rl_flood"][t]   = info_rl["flood_fraction"]
         data["rl_reward"][t]  = rl_reward
 
-        # ── PID step ──────────────────────────────────────────────────────────
         pid_ctrl = pid.step(pid_cap, G)
         pid_r = surrogate.predict(
             G_gas=G,
@@ -386,11 +361,6 @@ def run_scenario(
     data["cap0"]  = cap0
     data["eng0"]  = eng0
     return data
-
-
-# =============================================================================
-# STATISTICS
-# =============================================================================
 
 def compute_stats(data: Dict, disturbance_step: int) -> Dict:
     """Compute comparison statistics for both controllers.
@@ -437,11 +407,6 @@ def compute_stats(data: Dict, disturbance_step: int) -> Dict:
             "pareto_score"   : float(cap[ds:].mean() - 5.0 * eng[ds:].mean()),
         }
     return stats
-
-
-# =============================================================================
-# DASHBOARD (5-row x 4-col, 16 panels)
-# =============================================================================
 
 def plot_dashboard(
     data: Dict,
@@ -566,8 +531,6 @@ def plot_dashboard(
     ax8.axhline(0.75, color="orange", lw=1, ls=":", alpha=0.6)
     style_ax(ax8, "Flooding Fraction", "Fraction of flood velocity", ylim=(0, 1.05))
     ax8.legend(fontsize=7)
-
-    # ── Panel 9: Capture distribution (row 2, col 1) ─────────────────────────
     ax9 = fig.add_subplot(gs[2, 1])
     post_rl  = data["rl_capture"][ds:]
     post_pid = data["pid_capture"][ds:]
@@ -589,7 +552,6 @@ def plot_dashboard(
     ax9.legend(fontsize=7)
     ax9.grid(True, color=C_GRID, lw=0.7, ls="--")
 
-    # ── Panel 10: Energy distribution (row 2, col 2) — NEW ───────────────────
     ax10 = fig.add_subplot(gs[2, 2])
     eng_rl  = data["rl_energy"][ds:]
     eng_pid = data["pid_energy"][ds:]
@@ -611,7 +573,6 @@ def plot_dashboard(
     ax10.legend(fontsize=7)
     ax10.grid(True, color=C_GRID, lw=0.7, ls="--")
 
-    # ── Panel 11: Pareto scatter (row 2, col 3) — NEW ────────────────────────
     ax11 = fig.add_subplot(gs[2, 3])
     pre_mask  = t < ds
     post_mask = t >= ds
@@ -634,7 +595,6 @@ def plot_dashboard(
     for spine in ax11.spines.values():
         spine.set_edgecolor(C_GRID)
 
-    # ── Panel 12: Cumulative energy (row 3, col 0) ───────────────────────────
     ax12 = fig.add_subplot(gs[3, 0])
     cum_rl  = np.cumsum(data["rl_energy"][ds:])
     cum_pid = np.cumsum(data["pid_energy"][ds:])
@@ -657,7 +617,6 @@ def plot_dashboard(
     for spine in ax12.spines.values():
         spine.set_edgecolor(C_GRID)
 
-    # ── Panel 13: Capture deviation from setpoint (row 3, col 1) — NEW ───────
     ax13 = fig.add_subplot(gs[3, 1])
     dev_rl  = np.abs(data["rl_capture"]  - 90.0)
     dev_pid = np.abs(data["pid_capture"] - 90.0)
@@ -678,18 +637,15 @@ def plot_dashboard(
     for spine in ax13.spines.values():
         spine.set_edgecolor(C_GRID)
 
-    # ── Panel 14: IAE bar chart (row 3, col 2) — NEW ─────────────────────────
     ax14 = fig.add_subplot(gs[3, 2])
     rl_s  = stats["rl"]
     pid_s = stats["pid"]
-
     metrics_bar = [
         ("IAE\nCapture", rl_s["iae_capture"],   pid_s["iae_capture"],   True),
         ("IAE\nEnergy",  rl_s["iae_energy"],     pid_s["iae_energy"],    True),
         ("Recov.\nSteps",rl_s["recovery_time"],  pid_s["recovery_time"], True),
         ("Max\nFlood",   rl_s["max_flood"] * 100, pid_s["max_flood"] * 100, True),
     ]
-
     x_bar  = np.arange(len(metrics_bar))
     width  = 0.35
     labels = [m[0] for m in metrics_bar]
@@ -700,8 +656,6 @@ def plot_dashboard(
                         alpha=0.8, label="PPO-LSTM")
     bars_pid = ax14.bar(x_bar + width / 2, pid_vals, width, color=C_PID,
                         alpha=0.8, label="PID")
-
-    # Mark winner with a check
     for i, (_, rv, pv, lower_better) in enumerate(metrics_bar):
         winner = rv < pv if lower_better else rv > pv
         if winner:
@@ -720,8 +674,6 @@ def plot_dashboard(
     ax14.grid(True, axis="y", color=C_GRID, lw=0.7, ls="--")
     for spine in ax14.spines.values():
         spine.set_edgecolor(C_GRID)
-
-    # ── Panel 15: Statistics table (rows 2-4, col 3) ─────────────────────────
     ax15 = fig.add_subplot(gs[3:5, 3])
     ax15.set_facecolor(C_BG)
     ax15.axis("off")
@@ -787,7 +739,6 @@ def plot_dashboard(
     ax15.set_title("Performance Statistics", fontsize=10,
                    fontweight="bold", color=C_LINE, pad=8)
 
-    # ── Panel 16: Key findings text (row 4, col 0-2) ─────────────────────────
     ax16 = fig.add_subplot(gs[4, 0:3])
     ax16.set_facecolor("#E3F2FD")
     ax16.axis("off")
@@ -834,11 +785,6 @@ def plot_dashboard(
     print(f"  Dashboard saved -> {out_path}")
     return fig
 
-
-# =============================================================================
-# MAIN
-# =============================================================================
-
 SCENARIOS: Dict[int, Dict] = {
     1: {
         "name"             : "Gas Flow Rate Step Change (G: 0.8 -> 1.25 kg/m2/s)",
@@ -877,38 +823,28 @@ def main() -> None:
     p = argparse.ArgumentParser(
         description="Compare PPO-LSTM vs PID on MEA CCU scenarios."
     )
-    p.add_argument("--model",       default="models/rl/best/best_model.zip",
+    p.add_argument("--model", default="models/rl/best/best_model.zip",
                    help="Path to trained RecurrentPPO model.")
-    p.add_argument("--model-path",  default="models/surrogate/model.pt",
+    p.add_argument("--model-path", default="models/surrogate/model.pt",
                    help="Path to surrogate model weights.")
     p.add_argument("--scaler-path", default="models/surrogate/scalers.pkl",
                    help="Path to surrogate scalers.")
-    p.add_argument("--scenario",    type=int, default=0,
+    p.add_argument("--scenario", type=int, default=0,
                    help="0=all scenarios, 1=G_gas step, 2=y_CO2 step, 3=combined.")
-    p.add_argument("--steps",       type=int, default=60,
-                   help="Total simulation steps per scenario.")
-    p.add_argument("--lam",         type=float, default=0.05,
-                   help="Energy penalty weight for RL agent (goal conditioning).")
-    p.add_argument("--lam-max",     type=float, default=0.10,
+    p.add_argument("--steps", type=int, default=60, help="Total simulation steps per scenario.")
+    p.add_argument("--lam", type=float, default=0.05, help="Energy penalty weight for RL agent (goal conditioning).")
+    p.add_argument("--lam-max", type=float, default=0.10, 
                    help="Training lam_max -- must match --lam-max used in train_rl.py "
                         "(default 0.10). Controls obs[15] normalisation range.")
-    p.add_argument("--no-plot",     action="store_true",
-                   help="Skip matplotlib dashboard generation.")
+    p.add_argument("--no-plot", action="store_true", help="Skip matplotlib dashboard generation.")
     args = p.parse_args()
-
     Path("results").mkdir(exist_ok=True)
-
     log.info("Loading surrogate and RL model...")
     surrogate = SurrogatePredictor(args.model_path, args.scaler_path)
-
     from sb3_contrib import RecurrentPPO
     from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
     from stable_baselines3.common.monitor import Monitor
     from src.env import CCUEnv
-
-    # Load VecNormalize stats so the model sees properly normalised observations.
-    # Without this, raw CCUEnv observations are fed to a policy trained on
-    # normalised obs, making inference unreliable.
     vecnorm_path = Path("models/rl/vecnorm.pkl")
     norm_env: Optional[VecNormalize] = None
     if vecnorm_path.exists():
@@ -987,7 +923,6 @@ def main() -> None:
             out = Path(f"results/comparison_scenario_{sc_id}.png")
             plot_dashboard(data, stats, sc["name"], out)
 
-    # Save combined CSV
     frames = []
     for sc_id, (data, stats, name) in all_data.items():
         t = np.arange(len(data["G_gas"]))

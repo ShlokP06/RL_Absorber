@@ -1,0 +1,323 @@
+/* ── Reset & base ────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+:root {
+  --bg:         #0a0f1e;
+  --surface:    #0f1729;
+  --surface2:   #151f38;
+  --border:     #1e2d4a;
+  --text:       #e2e8f0;
+  --text-dim:   #64748b;
+  --green:      #22c55e;
+  --green-dim:  #16a34a;
+  --red:        #ef4444;
+  --red-dim:    #dc2626;
+  --blue:       #3b82f6;
+  --yellow:     #facc15;
+  --orange:     #f97316;
+  --purple:     #a855f7;
+  --accent:     #06b6d4;
+}
+
+body { background: var(--bg); color: var(--text); font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace; }
+
+/* ── Layout ──────────────────────────────────────────────────────────── */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  gap: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.header h1 {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+.status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status-dot.disconnected { background: var(--red); }
+
+.panels {
+  display: grid;
+  grid-template-columns: 180px 1fr 200px 200px;
+  grid-template-rows: 1fr;
+  flex: 1;
+  min-height: 0;
+  gap: 1px;
+  background: var(--border);
+}
+
+.panel {
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.panel-title {
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.panel-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+
+/* ── Controls bar ────────────────────────────────────────────────────── */
+.controls-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+.btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.danger { border-color: var(--red); color: var(--red); background: rgba(239,68,68,0.1); }
+.btn.danger:hover { background: rgba(239,68,68,0.25); box-shadow: 0 0 12px rgba(239,68,68,0.3); }
+.btn.active { border-color: var(--yellow); color: var(--yellow); background: rgba(250,204,21,0.1); }
+.btn.reset  { border-color: var(--text-dim); }
+.btn.reset:hover { border-color: var(--text); color: var(--text); }
+
+/* ── Sliders ─────────────────────────────────────────────────────────── */
+.slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 120px;
+}
+.slider-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  display: flex;
+  justify-content: space-between;
+}
+.slider-label span { color: var(--accent); font-weight: 700; }
+input[type="range"] {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+/* ── MEA Column ──────────────────────────────────────────────────────── */
+.mea-column-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}
+
+/* ── Time series ─────────────────────────────────────────────────────── */
+.chart-wrap {
+  width: 100%;
+  height: 100%;
+  padding: 4px 0;
+}
+
+/* ── Agent actions ───────────────────────────────────────────────────── */
+.actions-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 10px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.action-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.action-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.action-bar-label .val { color: var(--text); font-weight: 700; }
+
+.action-bar-track {
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--border);
+}
+.action-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease, background 0.4s ease;
+}
+
+/* ── Disturbance controls ────────────────────────────────────────────── */
+.dist-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px 10px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.dist-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dist-block .title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.dist-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--orange);
+  letter-spacing: -0.02em;
+}
+
+/* ── Bottom bar ──────────────────────────────────────────────────────── */
+.bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 6px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.metric .val {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.metric .label {
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.metric.positive .val { color: var(--green); }
+.metric.negative .val { color: var(--red); }
+.metric.neutral  .val { color: var(--accent); }
+.metric.gold     .val { color: var(--yellow); }
+.metric.tree     .val { color: #4ade80; }
+
+/* ── Frozen overlay ──────────────────────────────────────────────────── */
+.frozen-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(250,204,21,0.15);
+  border: 1px solid var(--yellow);
+  color: var(--yellow);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.1em;
+  z-index: 10;
+}
+
+/* ── Animations ─────────────────────────────────────────────────────── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(1.15); }
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0px transparent; }
+  50%       { box-shadow: 0 0 10px var(--red); }
+}
+@keyframes flashRed {
+  0%, 100% { background: transparent; }
+  50%       { background: rgba(239,68,68,0.12); }
+}
+@keyframes bubbleRise {
+  0%   { transform: translateY(0)   scale(1);   opacity: 0.3; }
+  100% { transform: translateY(-80px) scale(0.5); opacity: 0; }
+}
+
+.btn.danger:active {
+  animation: flashRed 0.3s ease;
+}
+
+/* ── Lambda slider label ─────────────────────────────────────────────── */
+.lambda-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 120px;
+  max-width: 200px;
+}
+.lambda-label {
+  font-size: 10px;
+  color: var(--purple);
+  display: flex;
+  justify-content: space-between;
+}
+.lambda-label span { color: var(--purple); font-weight: 700; }
+input.lambda-range { accent-color: var(--purple); }
