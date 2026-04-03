@@ -221,6 +221,7 @@ def train(args) -> None:
         lam_integral    = args.lam_I,
         lam_energy_int  = args.lam_Ie,
         lam_above       = args.lam_above,
+        lam_over        = args.lam_over,
         lam_flood       = args.lam_flood,
         step_prob       = args.step_prob,
         actuator_lag    = True,
@@ -394,6 +395,8 @@ def main() -> None:
                    help="Energy integral weight (reduced 4x: don't fear high energy when capture needs it)")
     p.add_argument("--lam-above",   type=float, default=0.30,
                    help="Above-target bonus weight (3x: strong incentive to stay above 85-90%%)")
+    p.add_argument("--lam-over",    type=float, default=0.05,
+                   help="Over-capture penalty weight: discourages capture above 95%% (Option B)")
     p.add_argument("--lam-flood",   type=float, default=0.10,
                    help="Flood soft penalty (reduced: hard constraint does the safety work)")
     p.add_argument("--step-prob",   type=float, default=0.04)

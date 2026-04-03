@@ -84,6 +84,7 @@ class CCUEnv(gym.Env):
         self.lam_I        = lam_integral
         self.lam_Ie       = lam_energy_int
         self.lam_above    = lam_above
+        self.lam_over     = lam_over
         self.lam_fl       = lam_flood
         self.step_prob    = step_prob
         self.act_lag      = actuator_lag
@@ -244,11 +245,14 @@ class CCUEnv(gym.Env):
         cap_n = self.cap / 100.0
         cap_reward = cap_n ** 2
 
-        # Proportional above-target bonus: scales linearly from 85% to 100%.
-        # At 85%: 0, at 90%: lam_above/3, at 95%: 2*lam_above/3, at 100%: lam_above.
-        # This gives the agent marginal incentive to push capture higher, not just
-        # cross 90% and stop.  Old flat bonus had zero gradient above 90%.
-        above = self.lam_above * max(0.0, self.cap - 85.0) / 15.0
+        # Above-target bonus: scales linearly from 85% → 95%, then plateaus.
+        # At 85%: 0, at 90%: lam_above/2, at 95%+: lam_above (full bonus).
+        # Capped at 95% so the agent targets 90-95%, not 100%.
+        above = self.lam_above * min(max(0.0, self.cap - 85.0), 10.0) / 10.0
+
+        # Over-capture penalty: discourages pushing above 95% unnecessarily.
+        # Gentle slope — doesn't override the capture incentive below 95%.
+        over_pen = self.lam_over * max(0.0, self.cap - 95.0) / 5.0
 
         # Energy penalty — normalised to [0, ~1] over typical operating range
         eng_pen = self.lam * (self.eng - 3.5) / 3.0
@@ -259,6 +263,7 @@ class CCUEnv(gym.Env):
 
         r = (cap_reward
              + above
+             - over_pen
              - eng_pen
              - self.lam_smooth * da2
              - self.lam_I  * max(self.cap_int, 0.0)
