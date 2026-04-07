@@ -30,7 +30,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Set
 
-# ── sys.path before any src imports ─────────────────────────────────────────
+# project root on sys.path so `from src.xxx import yyy` works
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
@@ -47,19 +47,11 @@ except ImportError:
 
 from demo_state import DemoState  # noqa: E402
 
-# --------------------------------------------------------------------------- #
-# Logging                                                                       #
-# --------------------------------------------------------------------------- #
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
 )
 logger = logging.getLogger("adsorber_demo")
-
-# --------------------------------------------------------------------------- #
-# Configuration                                                                 #
-# --------------------------------------------------------------------------- #
 
 CONFIG = {
     "model_path":     os.getenv("MODEL_PATH",     "models/rl/best/best_model.zip"),
@@ -70,17 +62,9 @@ CONFIG = {
 
 STEP_INTERVAL: float = float(os.getenv("STEP_INTERVAL", "0.5"))
 
-# --------------------------------------------------------------------------- #
-# Global state (single DemoState instance, guarded by asyncio.Lock)            #
-# --------------------------------------------------------------------------- #
-
 demo: DemoState | None = None
 ws_clients: Set[WebSocket] = set()
 sim_lock = asyncio.Lock()
-
-# --------------------------------------------------------------------------- #
-# Background simulation loop                                                    #
-# --------------------------------------------------------------------------- #
 
 async def simulation_loop() -> None:
     while True:
@@ -106,10 +90,6 @@ async def simulation_loop() -> None:
             except Exception:
                 dead.add(ws)
         ws_clients.difference_update(dead)
-
-# --------------------------------------------------------------------------- #
-# App lifecycle                                                                 #
-# --------------------------------------------------------------------------- #
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # type: ignore[type-arg]
@@ -142,10 +122,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --------------------------------------------------------------------------- #
-# Pydantic request schemas                                                      #
-# --------------------------------------------------------------------------- #
-
 class DisturbanceRequest(BaseModel):
     G_gas:    float
     y_CO2_in: float
@@ -155,10 +131,6 @@ class LambdaRequest(BaseModel):
 
 class FreezeRequest(BaseModel):
     frozen: bool
-
-# --------------------------------------------------------------------------- #
-# REST endpoints                                                                #
-# --------------------------------------------------------------------------- #
 
 @app.post("/reset")
 async def reset_env():
@@ -240,10 +212,6 @@ async def get_history():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-# --------------------------------------------------------------------------- #
-# WebSocket                                                                     #
-# --------------------------------------------------------------------------- #
 
 @app.websocket("/stream")
 async def ws_stream(ws: WebSocket):

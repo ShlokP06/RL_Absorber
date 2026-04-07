@@ -44,7 +44,6 @@ from src.simulation import max_safe_L, flood_fraction
 
 log = logging.getLogger(__name__)
 
-# ── Colours ───────────────────────────────────────────────────────────────────
 C_RL   = "#2196F3"   # blue
 C_PID  = "#F44336"   # red
 C_DIST = "#FF9800"   # orange
@@ -53,18 +52,9 @@ C_GRID = "#E0E0E0"
 C_LINE = "#333333"
 
 
-# =============================================================================
-# PID CONTROLLER
-# =============================================================================
-
 @dataclass
 class PIDController:
-    """
-    Independent PID loop for one controlled variable.
-    Uses anti-windup on the integral term.
-    Output = bias + Kp*error + Ki*integral + Kd*derivative,
-    where bias is the nominal operating point.
-    """
+    """Independent PID loop for one process variable, with anti-windup."""
     Kp: float
     Ki: float
     Kd: float
@@ -136,18 +126,16 @@ class ThreeLoopPID:
             integral_limit=20.0,
         )
 
-        # State
         self.L_liq      = self.L_NOM
         self.alpha_lean = self.AL_NOM
         self.T_L_in     = self.T_NOM
         self.T_ic       = self.IC_NOM
 
-        # First-order actuator lag (same as RL agent for fair comparison)
+        # Same actuator time constants as the RL env for a fair comparison.
         self.TAU_L  = 3.0
         self.TAU_AL = 5.0
         self.TAU_T  = 2.0
 
-        # Actual values (lag-filtered)
         self.L_act  = self.L_NOM
         self.al_act = self.AL_NOM
         self.T_act  = self.T_NOM
@@ -165,17 +153,14 @@ class ThreeLoopPID:
         self.T_act      = self.T_NOM
 
     def step(self, capture: float, G_gas: float) -> Dict:
-        # PID commands
         L_cmd  = self.pid_L.step(capture)
         al_cmd = self.pid_al.step(capture)
         T_cmd  = self.pid_T.step(capture)
 
-        # Hard flood constraint (same as RL)
         T_K   = self.T_act + 273.15
         L_max = max_safe_L(G_gas, T_K, self.al_act, limit=0.79)
         L_cmd = float(np.clip(L_cmd, 2.0, min(L_max, 12.0)))
 
-        # Actuator lag
         self.L_act  += (1 / self.TAU_L)  * (L_cmd  - self.L_act)
         self.al_act += (1 / self.TAU_AL) * (al_cmd - self.al_act)
         self.T_act  += (1 / self.TAU_T)  * (T_cmd  - self.T_act)
@@ -462,7 +447,6 @@ def plot_dashboard(
             ax.axvline(ds, color=C_DIST, linewidth=1.5, linestyle=":",
                        label="Disturbance")
 
-    # ── Panel 1: Disturbances (row 0, col 0) ─────────────────────────────────
     ax1 = fig.add_subplot(gs[0, 0])
     ax1.plot(t, data["G_gas"], color=C_DIST, lw=2, label="G_gas")
     ax1.plot(t, data["y_CO2"] * 10, color="#9C27B0",
@@ -471,7 +455,6 @@ def plot_dashboard(
     ax1.legend(fontsize=7, loc="upper left")
     ax1.axvline(ds, color=C_DIST, lw=1.5, ls=":")
 
-    # ── Panel 2: Capture rate (row 0, col 1-2) ───────────────────────────────
     ax2 = fig.add_subplot(gs[0, 1:3])
     ax2.fill_between(t, 85, 100, alpha=0.08, color="green", label="Target zone (85%+)")
     ax2.plot(t, data["rl_capture"],  color=C_RL,  lw=2.5, label="PPO-LSTM")
@@ -482,7 +465,6 @@ def plot_dashboard(
     style_ax(ax2, "CO2 Capture Rate", "Capture Rate (%)", ylim=(20, 105))
     ax2.legend(fontsize=8, loc="lower right")
 
-    # ── Panel 3: Specific energy (row 0, col 3) ───────────────────────────────
     ax3 = fig.add_subplot(gs[0, 3])
     ax3.plot(t, data["rl_energy"],  color=C_RL,  lw=2.5, label="PPO-LSTM")
     ax3.plot(t, data["pid_energy"], color=C_PID, lw=2.5, ls="--", label="PID")
@@ -491,7 +473,6 @@ def plot_dashboard(
     style_ax(ax3, "Specific Energy", "E (GJ/tonne CO2)")
     ax3.legend(fontsize=7)
 
-    # ── Panel 4: L_liq (row 1, col 0) ────────────────────────────────────────
     ax4 = fig.add_subplot(gs[1, 0])
     ax4.plot(t, data["rl_L"],  color=C_RL,  lw=2, label="PPO-LSTM")
     ax4.plot(t, data["pid_L"], color=C_PID, lw=2, ls="--", label="PID")
@@ -500,21 +481,18 @@ def plot_dashboard(
     style_ax(ax4, "Solvent Flow (L_liq)", "kg/m2/s", ylim=(1.5, 12.5))
     ax4.legend(fontsize=7)
 
-    # ── Panel 5: alpha_lean (row 1, col 1) ───────────────────────────────────
     ax5 = fig.add_subplot(gs[1, 1])
     ax5.plot(t, data["rl_alpha"],  color=C_RL,  lw=2, label="PPO-LSTM")
     ax5.plot(t, data["pid_alpha"], color=C_PID, lw=2, ls="--", label="PID")
     style_ax(ax5, "Lean Loading (alpha_lean)", "mol CO2/mol MEA")
     ax5.legend(fontsize=7)
 
-    # ── Panel 6: T_L_in (row 1, col 2) ───────────────────────────────────────
     ax6 = fig.add_subplot(gs[1, 2])
     ax6.plot(t, data["rl_T"],  color=C_RL,  lw=2, label="PPO-LSTM")
     ax6.plot(t, data["pid_T"], color=C_PID, lw=2, ls="--", label="PID")
     style_ax(ax6, "Lean Solvent Temp (T_L_in)", "deg C")
     ax6.legend(fontsize=7)
 
-    # ── Panel 7: T_ic (row 1, col 3) ─────────────────────────────────────────
     ax7 = fig.add_subplot(gs[1, 3])
     ax7.plot(t, data["rl_Tic"],  color=C_RL, lw=2, label="PPO-LSTM")
     ax7.plot(t, data["pid_Tic"], color=C_PID, lw=1.5, ls="--",
@@ -522,7 +500,6 @@ def plot_dashboard(
     style_ax(ax7, "Intercooler Temp (T_ic)", "deg C")
     ax7.legend(fontsize=7)
 
-    # ── Panel 8: Flood fraction (row 2, col 0) ───────────────────────────────
     ax8 = fig.add_subplot(gs[2, 0])
     ax8.fill_between(t, 0.75, 0.79, alpha=0.12, color="red", label="Danger zone")
     ax8.plot(t, data["rl_flood"],  color=C_RL,  lw=2, label="PPO-LSTM")
@@ -898,7 +875,6 @@ def main() -> None:
         stats = compute_stats(data, sc["disturbance_step"])
         all_data[sc_id] = (data, stats, sc["name"])
 
-        # Console stats table
         print(f"\n  {'Metric':<26}  {'PPO-LSTM':>10}  {'PID':>10}")
         print("  " + "-" * 52)
         rl_s, pid_s = stats["rl"], stats["pid"]

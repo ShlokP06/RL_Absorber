@@ -29,11 +29,7 @@ N_INPUTS = len(X_COLS)   # 6
 
 
 class CCUSurrogate(nn.Module):
-    """4-layer MLP surrogate: 6 steady-state inputs → 3 process outputs.
-
-    Architecture: N_INPUTS → width → width → width//2 → 3.
-    Hidden layers use Kaiming/ReLU init; output layer uses Xavier.
-    """
+    """4-layer MLP: N_INPUTS → width → width → width//2 → 3 outputs."""
 
     def __init__(self, width: int = 64) -> None:
         super().__init__()
@@ -48,7 +44,7 @@ class CCUSurrogate(nn.Module):
             if isinstance(m, nn.Linear):
                 nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
                 nn.init.zeros_(m.bias)
-        # Output layer has no activation — use Xavier instead of Kaiming/ReLU
+        # output layer: no activation, use Xavier
         nn.init.xavier_uniform_(self.net[-1].weight)
         nn.init.zeros_(self.net[-1].bias)
 

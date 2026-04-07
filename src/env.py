@@ -113,8 +113,6 @@ class CCUEnv(gym.Env):
         self._carry = None
         self._zero_state()
 
-    # ── State helpers ─────────────────────────────────────────────────────────
-
     def _zero_state(self):
         self.G = self.y = self.G_mean = self.y_mean = None
         self.G_trend = self.y_trend = 0.0
@@ -137,20 +135,12 @@ class CCUEnv(gym.Env):
     def _nsym(self, v, s):
         return float(np.clip(v / (s + 1e-8), -1.0, 1.0))
 
-    # ── Hard constraint projection ─────────────────────────────────────────────
-
     def _project_L(self, L_candidate):
-        """
-        Clamp L_candidate to max_safe_L given current G_gas and actuator actuals.
-        Guarantees flood_fraction < 0.79 regardless of agent action.
-        Called before updating L_cmd.
-        """
+        """Clamp L_candidate so flood_fraction < 0.79."""
         T_K   = self.T_act + 273.15 if self.T_act is not None else 313.15
         alpha = self.al_act          if self.al_act is not None else 0.27
         L_max = max_safe_L(self.G, T_K, alpha, limit=0.79)
         return float(np.clip(L_candidate, self.L_lo, min(L_max, self.L_hi)))
-
-    # ── Disturbances ──────────────────────────────────────────────────────────
 
     def _init_dist(self, carry=False):
         rng = self.np_random
@@ -195,7 +185,7 @@ class CCUEnv(gym.Env):
         self.al_act = float(np.clip(self.al_act, self.al_lo, self.al_hi))
         self.T_act  = float(np.clip(self.T_act,  self.T_lo,  self.T_hi))
         self.ic_act = float(np.clip(self.ic_act, self.ic_lo, self.ic_hi))
-        self.L_act = self._project_L(self.L_act)
+        self.L_act  = self._project_L(self.L_act)
 
     def _query(self):
         r = self.surrogate.predict(
@@ -211,8 +201,6 @@ class CCUEnv(gym.Env):
                                 0.5, 50.0))
         self.ff = flood_fraction(self.G, self.L_act, self.T_act + 273.15, self.al_act)
         return cap, eng
-
-    # ── Observation ───────────────────────────────────────────────────────────
 
     def _obs(self):
         return np.clip(np.array([
@@ -235,29 +223,20 @@ class CCUEnv(gym.Env):
             self._n01(self.ic_cmd, self.ic_lo, self.ic_hi),   # [16] ic lag signal
         ], dtype=np.float32), -1.0, 1.0)
 
-    # ── Reward ────────────────────────────────────────────────────────────────
-
     def _reward(self, action):
-        # Squared action change — stronger penalty on large jumps
         da2 = float(np.mean((action - self.prev_act) ** 2))
 
-        # Shaped capture: quadratic amplifies difference between 75% and 95%
         cap_n = self.cap / 100.0
         cap_reward = cap_n ** 2
 
-        # Above-target bonus: scales linearly from 85% → 95%, then plateaus.
-        # At 85%: 0, at 90%: lam_above/2, at 95%+: lam_above (full bonus).
-        # Capped at 95% so the agent targets 90-95%, not 100%.
+        # linear bonus from 85% → 95%, then plateaus
         above = self.lam_above * min(max(0.0, self.cap - 85.0), 10.0) / 10.0
 
-        # Over-capture penalty: discourages pushing above 95% unnecessarily.
-        # Gentle slope — doesn't override the capture incentive below 95%.
+        # gentle penalty above 95% — doesn't fight capture incentive below that
         over_pen = self.lam_over * max(0.0, self.cap - 95.0) / 5.0
 
-        # Energy penalty — normalised to [0, ~1] over typical operating range
         eng_pen = self.lam * (self.eng - 3.5) / 3.0
 
-        # Flood soft penalty (narrower zone; hard constraint does the safety work)
         fl_pen = (self.lam_fl * min((self.ff - 0.75) / 0.05, 2.0)
                   if self.ff > 0.75 else 0.0)
 
@@ -279,8 +258,6 @@ class CCUEnv(gym.Env):
         )
         return float(r), info
 
-    # ── Gymnasium API ─────────────────────────────────────────────────────────
-
     def reset(
         self, seed: int | None = None, options: dict | None = None
     ) -> tuple[np.ndarray, dict]:
@@ -298,7 +275,6 @@ class CCUEnv(gym.Env):
             self.T_act,  self.ic_act= s["T_act"], s["ic_act"]
             self.G_trend = self.y_trend = 0.0
         else:
-            # Initialise disturbances FIRST so G is available for _project_L
             self._init_dist(carry=False)
             self.L_cmd  = float(rng.uniform(self.L_lo,  self.L_hi))
             self.al_cmd = float(rng.uniform(self.al_lo, self.al_hi))
@@ -321,12 +297,10 @@ class CCUEnv(gym.Env):
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
         action = np.array(action, np.float32)
 
-        # 1. Disturbances advance
         self._step_dist()
 
-        # 2. Commands — L_liq projected through hard flood constraint
         L_raw   = self.L_cmd  + float(action[0]) * self.dL
-        self.L_cmd  = self._project_L(L_raw)           # HARD CONSTRAINT [3]
+        self.L_cmd  = self._project_L(L_raw)
         self.al_cmd = float(np.clip(self.al_cmd + float(action[1])*self.dal,
                                     self.al_lo, self.al_hi))
         self.T_cmd  = float(np.clip(self.T_cmd  + float(action[2])*self.dT,
@@ -334,24 +308,19 @@ class CCUEnv(gym.Env):
         self.ic_cmd = float(np.clip(self.ic_cmd + float(action[3])*self.dic,
                                     self.ic_lo, self.ic_hi))
 
-        # 3. Actuator lag
         self._step_act()
 
-        # 4. Surrogate
         self.prev_cap, self.prev_eng = self.cap, self.eng
         self.cap, self.eng = self._query()
 
-        # 5. Controller signals (exponential decay instead of constant)
         self.cap_int = float(np.clip(
             self.cap_int * 0.95 + max(0.0, 90.0 - self.cap) / 100.0, 0.0, 5.0))
         self.eng_int = float(np.clip(
             self.eng_int * 0.95 + max(0.0, self.eng - 5.0) / 10.0,  0.0, 5.0))
 
-        # 6. Reward
         reward, info = self._reward(action)
         self.prev_act = action.copy()
 
-        # 7. Carry state
         self._carry = dict(
             G=self.G, y=self.y, G_mean=self.G_mean, y_mean=self.y_mean,
             L_cmd=self.L_cmd, al_cmd=self.al_cmd,

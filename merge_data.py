@@ -52,5 +52,6 @@ def main():
     merged.to_csv(out, index=False)
     print(f"\n  Saved {len(merged):,} points -> {out}")
 
+
 if __name__ == "__main__":
     main()

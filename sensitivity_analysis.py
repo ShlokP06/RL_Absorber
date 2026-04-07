@@ -186,6 +186,7 @@ def plot_oat(oat_results, nom_result, out_path: Path):
     plt.savefig(out_path, dpi=150, bbox_inches="tight",
                 facecolor=PALETTE["bg"])
     print(f"  OAT plot saved → {out_path}")
+
 PAIRS = [
     ("G_gas", "L_liq",
      "Gas flux vs Solvent flux\n(Flooding boundary & L/G trade-off)"),
@@ -482,5 +483,6 @@ def main():
     print("sensitivity_heatmaps.png — interaction heatmaps")
     print("sensitivity_tornado.png — tornado chart")
     print("sensitivity_data.csv — full numerical data")
+
 if __name__ == "__main__":
     main()

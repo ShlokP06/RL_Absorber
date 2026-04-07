@@ -11,10 +11,6 @@ from __future__ import annotations
 import numpy as np
 
 
-# --------------------------------------------------------------------------- #
-# Generic discrete-time PID                                                     #
-# --------------------------------------------------------------------------- #
-
 class PIDController:
     """Discrete-time PID with anti-windup integral clamping."""
 
@@ -60,10 +56,6 @@ class PIDController:
         self.prev_error = 0.0
 
 
-# --------------------------------------------------------------------------- #
-# Three-loop PID simulator                                                      #
-# --------------------------------------------------------------------------- #
-
 class PIDSimulator:
     """
     Three-loop PID (L_liq, alpha_lean, T_L_in) running on the surrogate.
@@ -81,8 +73,6 @@ class PIDSimulator:
         self.surrogate = surrogate
         self._make_controllers()
         self._init_state()
-
-    # ------------------------------------------------------------------ #
 
     def _make_controllers(self) -> None:
         self.pid_L = PIDController(
@@ -112,8 +102,6 @@ class PIDSimulator:
         self.cap:    float = 85.0
         self.eng:    float = 4.0
 
-    # ------------------------------------------------------------------ #
-
     def reset(self) -> None:
         self.pid_L.reset()
         self.pid_al.reset()
@@ -129,7 +117,7 @@ class PIDSimulator:
         al_cmd = self.pid_al.step(self.cap)
         T_cmd  = self.pid_T.step(self.cap)
 
-        # First-order actuator lag (same TAU as RL env)
+        # First-order actuator lag (same time constants as RL env)
         self.L_act  += (1.0 / 3.0) * (L_cmd  - self.L_act)
         self.al_act += (1.0 / 5.0) * (al_cmd - self.al_act)
         self.T_act  += (1.0 / 2.0) * (T_cmd  - self.T_act)
@@ -137,7 +125,6 @@ class PIDSimulator:
         self.al_act = float(np.clip(self.al_act, 0.18, 0.38))
         self.T_act  = float(np.clip(self.T_act,  30.0, 55.0))
 
-        # Hard flood constraint (same as RL env)
         T_K   = self.T_act + 273.15
         L_max = max_safe_L(G, T_K, self.al_act, limit=0.79)
         self.L_act = float(np.clip(self.L_act, 2.0, min(L_max, 12.0)))

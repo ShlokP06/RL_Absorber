@@ -17,7 +17,7 @@ import numpy as np
 from pathlib import Path
 from typing import Optional
 
-# ── Project root on sys.path ────────────────────────────────────────────────
+# project root on sys.path so `from src.xxx import yyy` works
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
@@ -29,10 +29,6 @@ from src.env import CCUEnv
 from src.surrogate import SurrogatePredictor
 from pid import PIDSimulator  # noqa: E402 — same directory
 
-
-# --------------------------------------------------------------------------- #
-# DemoState                                                                     #
-# --------------------------------------------------------------------------- #
 
 class DemoState:
 
@@ -48,8 +44,6 @@ class DemoState:
         self._load_models(config)
         self.reset()
 
-    # ── Model loading ──────────────────────────────────────────────────────
-
     def _load_models(self, config: dict) -> None:
         root = _PROJECT_ROOT
 
@@ -58,10 +52,8 @@ class DemoState:
         model_path     = str(root / config["model_path"])
         vecnorm_path   = str(root / config["vecnorm_path"])
 
-        # Surrogate shared by RL env and PID sim
         self.surrogate = SurrogatePredictor(surrogate_path, scalers_path)
 
-        # RL environment wrapped in VecNormalize (eval mode)
         def _make_env() -> CCUEnv:
             return CCUEnv(
                 model_path=surrogate_path,
@@ -81,13 +73,8 @@ class DemoState:
         self.rl_vec.training    = False
         self.rl_vec.norm_reward = False
 
-        # RecurrentPPO model (no env binding needed — spaces match)
-        self.model = RecurrentPPO.load(model_path, device="cpu")
-
-        # PID baseline
+        self.model   = RecurrentPPO.load(model_path, device="cpu")
         self.pid_sim = PIDSimulator(self.surrogate)
-
-    # ── Internal helpers ───────────────────────────────────────────────────
 
     def _raw(self) -> CCUEnv:
         """Unwrap to the underlying CCUEnv."""
@@ -103,8 +90,6 @@ class DemoState:
         if raw.lam is not None:
             raw.lam = self.lambda_energy
 
-    # ── Public API ─────────────────────────────────────────────────────────
-
     def reset(self) -> dict:
         """Reset both simulations and all counters."""
         self.obs: np.ndarray = self.rl_vec.reset()
@@ -118,11 +103,9 @@ class DemoState:
         self._manual_dist:  Optional[tuple] = None
         self.lambda_energy: float = 0.05
 
-        # EMA action smoothing — prevents high-frequency oscillation when agent
-        # is near constraint boundaries or at high λ (edge of training distribution)
+        # EMA action smoothing — prevents high-frequency oscillation near constraint boundaries
         self._smooth_action = np.zeros((1, 4), dtype=np.float32)
 
-        # Apply initial lambda
         raw = self._raw()
         if raw.lam is not None:
             raw.lam = self.lambda_energy
@@ -139,11 +122,10 @@ class DemoState:
         return self._snapshot()
 
     def step(self) -> dict:
-        """Advance both simulations by one tick and return a state snapshot."""
+        """Advance both simulations by one tick and return a snapshot."""
         self._apply_overrides()
         raw = self._raw()
 
-        # ── RL action ──────────────────────────────────────────────────
         if not self.frozen:
             action, self.lstm_states = self.model.predict(
                 self.obs,
@@ -154,16 +136,11 @@ class DemoState:
             self.episode_starts[:] = False
         else:
             action = self._frozen_action(raw)
-            # LSTM state preserved but not updated when frozen
 
-        # EMA smoothing on the command signal — α=0.55 keeps responsiveness
-        # while killing the high-frequency bang-bang near constraint boundaries.
-        # Real plants have this naturally (valve rate limiters, DCS setpoint ramps).
-        SMOOTH = 0.55
+        SMOOTH = 0.55  # EMA α — keeps responsiveness while damping high-freq oscillation
         action = SMOOTH * action + (1.0 - SMOOTH) * self._smooth_action
         self._smooth_action = action.copy()
 
-        # ── Step RL env ────────────────────────────────────────────────
         self.obs, _reward, dones, _infos = self.rl_vec.step(action)
 
         if dones[0]:
@@ -172,23 +149,19 @@ class DemoState:
                 self.lstm_states = None
             self._smooth_action[:] = 0.0
 
-        raw = self._raw()  # re-fetch after possible reset
+        raw = self._raw()
 
-        # ── Snap G,y back after OU noise if manual override is active ──
-        # env._step_dist() adds OU noise even when G_mean is pinned, so
-        # we re-clamp here to keep the displayed value stable.
+        # re-clamp G,y after OU noise to keep displayed value stable when override is active
         if self._manual_dist is not None:
             raw.G      = self._manual_dist[0]
             raw.G_mean = self._manual_dist[0]
             raw.y      = self._manual_dist[1]
             raw.y_mean = self._manual_dist[1]
 
-        # ── Sync disturbances → PID sim, step it ───────────────────────
         G_sync = self._manual_dist[0] if self._manual_dist else raw.G
         y_sync = self._manual_dist[1] if self._manual_dist else raw.y
         pid_result = self.pid_sim.step(G_sync, y_sync)
 
-        # ── Build RL result dict ───────────────────────────────────────
         rl_result = {
             "cap":    round(raw.cap,    3),
             "eng":    round(raw.eng,    4),
@@ -202,14 +175,11 @@ class DemoState:
             "action": [round(float(x), 4) for x in action[0]],
         }
 
-        # ── Update impact counters ─────────────────────────────────────
         rl_cap_frac  = rl_result["cap"]  / 100.0
         pid_cap_frac = pid_result["cap"] / 100.0
         self._co2_rl  += rl_cap_frac  * self._CO2_SCALE
         self._co2_pid += pid_cap_frac * self._CO2_SCALE
 
-        # Energy comparison is normalised to RL's capture rate:
-        # "for each tonne RL captured, how much less energy did it use vs PID?"
         # kwh_delta = (pid_eng - rl_eng) × rl_cap × scale  →  positive = RL cheaper
         self._kwh_rl  += rl_result["eng"]  * rl_cap_frac * self._KWH_SCALE
         self._kwh_pid += pid_result["eng"] * rl_cap_frac * self._KWH_SCALE
@@ -221,13 +191,8 @@ class DemoState:
         self.t += 1
         return snap
 
-    # ── Frozen-agent fallback ──────────────────────────────────────────
-
     def _frozen_action(self, raw: CCUEnv) -> np.ndarray:
-        """
-        Proportional delta action that steers RL env toward PID targets.
-        LSTM state is NOT updated while frozen, so RL can recover when unfrozen.
-        """
+        """Proportional delta action steering toward PID targets while LSTM state is preserved."""
         error = 90.0 - raw.cap
         dL  = 1.0;  dal = 0.02;  dT = 2.5
 
@@ -241,8 +206,6 @@ class DemoState:
         a3 = 0.0
 
         return np.array([[a0, a1, a2, a3]], dtype=np.float32)
-
-    # ── Snapshot builder ───────────────────────────────────────────────
 
     def _snapshot(
         self,
@@ -292,8 +255,6 @@ class DemoState:
             },
         }
 
-    # ── User controls ──────────────────────────────────────────────────
-
     def set_disturbance(self, G_gas: float, y_CO2_in: float) -> None:
         self._manual_dist = (
             float(np.clip(G_gas,     0.40, 2.50)),
@@ -327,7 +288,7 @@ class DemoState:
             self.lstm_states = self._frozen_lstm
             self._frozen_lstm = None
             self.episode_starts[:] = False
-            self._smooth_action[:] = 0.0  # clear buffer so RL starts fresh
+            self._smooth_action[:] = 0.0
         self.frozen = frozen
 
     def get_snapshot(self) -> dict:
