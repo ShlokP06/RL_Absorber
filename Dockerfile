@@ -12,11 +12,11 @@
 ARG USE_CUDA=0
 
 # ── Base image: CUDA or slim ──────────────────────────────────────────────────
-FROM python:3.11-slim AS base-cpu
-FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS base-cuda
+FROM python:3.11-slim AS base-0
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS base-1
 
-# Select base based on build arg
-FROM base-${USE_CUDA:+cuda}${USE_CUDA:-cpu} AS final
+# USE_CUDA=0 → base-0 (python:3.11-slim), USE_CUDA=1 → base-1 (cuda)
+FROM base-${USE_CUDA} AS final
 
 # For CUDA base, python isn't pre-installed
 ARG USE_CUDA=0

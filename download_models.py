@@ -49,8 +49,22 @@ def main() -> None:
     print()
 
     print("  Extracting...")
+    rl_best_dir = models_dir / "rl" / "best"
+    surrogate_dir = models_dir / "surrogate"
+    rl_best_dir.mkdir(parents=True, exist_ok=True)
+    surrogate_dir.mkdir(parents=True, exist_ok=True)
+
+    file_map = {
+        "best_model.zip": rl_best_dir / "best_model.zip",
+        "vecnorm.pkl":    models_dir / "rl" / "vecnorm.pkl",
+        "model.pt":       surrogate_dir / "model.pt",
+        "scalers.pkl":    surrogate_dir / "scalers.pkl",
+    }
+
     with zipfile.ZipFile(DEST) as z:
-        z.extractall(".")
+        for name, dest_path in file_map.items():
+            if name in z.namelist():
+                dest_path.write_bytes(z.read(name))
 
     DEST.unlink()
     print("  Done. models/ is ready.\n")
