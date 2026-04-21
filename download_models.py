@@ -21,7 +21,7 @@ import urllib.request
 from pathlib import Path
 
 RELEASE_URL = (
-    "https://github.com/ShlokP06/RL_Adsorption/releases/download/v1.0/models.zip"
+    "https://github.com/ShlokP06/RL_Absorber/releases/download/v1.0/models.zip"
 )
 
 DEST = Path("models.zip")
