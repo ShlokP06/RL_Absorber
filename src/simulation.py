@@ -16,7 +16,7 @@ References
 
 import numpy as np
 
-# ── Constants ─────────────────────────────────────────────────────────────────
+# Constants
 R      = 8.314
 MEA_MW = 61.08e-3
 H2O_MW = 18.015e-3
@@ -30,15 +30,13 @@ W_COMP = 0.35         # GJ/tonne CO2 compression to 110 bar [6]
 N_STGS = 60
 J_IC   = N_STGS // 2  # intercooler stage (column midpoint)
 
-# VLE — Kent-Eisenberg fitted to Jou et al. (1995) [1]
+# VLE coefficients — Kent-Eisenberg fitted to Jou et al. (1995) [1]
 _pts = [(0.25, 313.15, 0.30), (0.40, 313.15, 3.50),
         (0.25, 393.15, 40.0), (0.45, 393.15, 200.0)]
 _A   = np.array([[1, a, 1/T, a/T] for a, T, _ in _pts])
 _b   = np.array([np.log10(p) for _, _, p in _pts])
 _C   = np.linalg.solve(_A, _b)
 
-
-# ── Physical properties ───────────────────────────────────────────────────────
 
 def density(T_C, alpha):
     return 1060.0 - 0.57 * (T_C - 25.0) + 25.0 * alpha
@@ -72,8 +70,6 @@ def flue_gas(y_CO2):
     return y_H2O, y_inert, M_mix
 
 
-# ── VLE ───────────────────────────────────────────────────────────────────────
-
 def p_star(alpha, T_K):
     alpha = float(np.clip(alpha, 0.10, 0.57))
     return float(np.clip(
@@ -83,13 +79,9 @@ def H_phys(T_K):
     return 3.4e-2 * np.exp(2044.0 * (1.0 / 298.15 - 1.0 / T_K))
 
 
-# ── Kinetics ──────────────────────────────────────────────────────────────────
-
 def k2(T_K):
     return 9.77e10 * np.exp(-6975.0 / T_K) / 1000.0
 
-
-# ── Mass transfer ─────────────────────────────────────────────────────────────
 
 def kL0(L, T_K, alpha):
     """Returns (kL [m/s], D_L [m²/s], D_M [m²/s]). Billet & Schultes [7]."""
@@ -126,8 +118,6 @@ def enhancement(T_K, alpha, D_L, kL_, D_M):
     return float(np.clip(E, 1.0, E_inf)), Ha
 
 
-# ── Flooding ──────────────────────────────────────────────────────────────────
-
 def flood_fraction(G, L, T_K, alpha):
     """Fractional approach to flooding. Billet & Schultes (1999) [7]."""
     rho_L = density(T_K - 273.15, alpha)
@@ -159,8 +149,6 @@ def max_safe_L(G, T_K, alpha, limit=0.79):
     return float(lo)
 
 
-# ── T_reb from alpha_lean ─────────────────────────────────────────────────────
-
 def T_reb(alpha_lean):
     """Reboiler temperature [°C]: p*(alpha, T_reb) = 0.5*P_tot."""
     target = 0.5 * P_tot / 1000.0
@@ -173,8 +161,6 @@ def T_reb(alpha_lean):
             hi = mid
     return float(np.clip(0.5 * (lo + hi), 370.0, 425.0)) - 273.15
 
-
-# ── Absorber ──────────────────────────────────────────────────────────────────
 
 def run_absorber(G, L, y_CO2, T_L_in_K, alpha_lean,
                  T_ic_C=None, N=N_STGS, tol=1e-7):
@@ -245,8 +231,7 @@ def run_absorber(G, L, y_CO2, T_L_in_K, alpha_lean,
                 df     = max(y_j * P_tot / 1000.0 - p_star(al, Ts), 0.0)
                 dT     = H_abs * KOG * a_p * df * dz * 1000.0 / max(L * 3800.0, 1e-9)
                 T_L[j] = float(np.clip(T_L[j+1] + dT, T_L_in_K, T_L_in_K + 40.0))
-                # Intercooling applied AFTER computing T_L[j] so it persists
-                # into the next temperature step (j-1 uses the corrected T_L[j])
+                # applied after T_L[j] is set so j-1 sees the corrected value
                 if T_ic_K is not None and j == J_IC:
                     T_L[j] = min(T_L[j], T_ic_K)
 
@@ -283,8 +268,6 @@ def run_absorber(G, L, y_CO2, T_L_in_K, alpha_lean,
     )
 
 
-# ── Stripper ──────────────────────────────────────────────────────────────────
-
 def run_stripper(alpha_rich, alpha_lean, L, T_rich_C, T_lean_in_C):
     """
     Specific reboiler duty [GJ/tonne CO2] including CO2 compression.
@@ -307,8 +290,6 @@ def run_stripper(alpha_rich, alpha_lean, L, T_rich_C, T_lean_in_C):
     E_reb   = (Q_des + Q_sens + Q_steam) / max(kg_CO2, 1e-9) * 1e-6
     return float(np.clip(E_reb + W_COMP, 0.5, 50.0))
 
-
-# ── Validity filter ───────────────────────────────────────────────────────────
 
 def is_valid(rec):
     cr = rec["capture_rate"];  ar = rec["alpha_rich"]

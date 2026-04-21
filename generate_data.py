@@ -42,7 +42,6 @@ BOUNDS_WIDE = {
     "T_ic_C":     (20.0, 55.0),
 }
 
-
 def sanity_check():
     print("=" * 55)
     print("  Sanity Check")
@@ -81,9 +80,9 @@ def sanity_check():
 
 
 def generate(n, seed, out, bounds, save_every=5000):
-    keys    = list(bounds.keys())
-    lo      = np.array([bounds[k][0] for k in keys])
-    hi      = np.array([bounds[k][1] for k in keys])
+    keys = list(bounds.keys())
+    lo = np.array([bounds[k][0] for k in keys])
+    hi = np.array([bounds[k][1] for k in keys])
     samples = qmc.scale(qmc.LatinHypercube(d=len(keys), seed=seed).random(n), lo, hi)
 
     records, n_valid, n_err = [], 0, 0
@@ -91,30 +90,29 @@ def generate(n, seed, out, bounds, save_every=5000):
     for i, row in enumerate(tqdm(samples, desc="Simulating", unit="pt")):
         G, L, y, TL, al, T_ic = row
         try:
-            ff  = flood_fraction(G, L, TL + 273.15, al)
-            ab  = run_absorber(G, L, y, TL + 273.15, al, T_ic_C=T_ic)
+            ff = flood_fraction(G, L, TL + 273.15, al)
+            ab = run_absorber(G, L, y, TL + 273.15, al, T_ic_C=T_ic)
             E_s = run_stripper(ab["alpha_rich"], al, L,
                                T_rich_C=ab["T_L_bottom_C"], T_lean_in_C=TL)
             Tr  = T_reb(al)
-
             rec = dict(
-                G_gas_kg_m2s   = round(G,    5),
-                L_liq_kg_m2s   = round(L,    5),
-                y_CO2_in       = round(y,    5),
-                T_L_in_C       = round(TL,   3),
-                alpha_lean     = round(al,   5),
-                T_ic_C         = round(T_ic, 3),
-                LG_ratio       = round(L / G, 4),
+                G_gas_kg_m2s = round(G,    5),
+                L_liq_kg_m2s = round(L,    5),
+                y_CO2_in = round(y,    5),
+                T_L_in_C = round(TL,   3),
+                alpha_lean = round(al,   5),
+                T_ic_C = round(T_ic, 3),
+                LG_ratio = round(L / G, 4),
                 flood_fraction = round(ff,   4),
-                T_reb_C        = round(Tr,   2),
-                capture_rate   = round(ab["capture_rate"],    4),
-                alpha_rich     = round(ab["alpha_rich"],      5),
-                delta_alpha    = round(ab["alpha_rich"] - al, 5),
-                T_L_bottom_C   = round(ab["T_L_bottom_C"],   3),
-                y_CO2_out      = round(ab["y_CO2_out"],       7),
-                E_specific_GJ  = round(E_s, 4),
-                Ha_avg         = round(ab["Ha_avg"], 3),
-                E_factor_avg   = round(ab["E_avg"],  3),
+                T_reb_C = round(Tr,   2),
+                capture_rate = round(ab["capture_rate"],    4),
+                alpha_rich = round(ab["alpha_rich"],      5),
+                delta_alpha = round(ab["alpha_rich"] - al, 5),
+                T_L_bottom_C = round(ab["T_L_bottom_C"],   3),
+                y_CO2_out = round(ab["y_CO2_out"],       7),
+                E_specific_GJ = round(E_s, 4),
+                Ha_avg = round(ab["Ha_avg"], 3),
+                E_factor_avg = round(ab["E_avg"],  3),
             )
             ok, reason = is_valid({**rec, "flood_fraction": ff})
             rec["valid"]  = ok
@@ -130,26 +128,22 @@ def generate(n, seed, out, bounds, save_every=5000):
                 "y_CO2_out", "E_specific_GJ", "Ha_avg", "E_factor_avg"]}
             rec.update(G_gas_kg_m2s=G, L_liq_kg_m2s=L, y_CO2_in=y, T_L_in_C=TL,
                        alpha_lean=al, T_ic_C=T_ic, valid=False, reason=str(e)[:100])
-
         records.append(rec)
         if (i + 1) % save_every == 0:
             pd.DataFrame(records).to_csv(out, index=False)
             tqdm.write(f"  [{i+1}/{n}] valid={n_valid} ({n_valid/(i+1)*100:.1f}%) "
                        f"errors={n_err}")
-
     df = pd.DataFrame(records)
     df.to_csv(out, index=False)
     dv = df[df["valid"]].copy()
-
     print(f"\n{'='*55}")
     print(f"  {len(dv)} valid / {n} attempted ({len(dv)/n*100:.1f}%)  errors={n_err}")
     for col in ["capture_rate", "E_specific_GJ", "alpha_lean", "T_ic_C", "delta_alpha"]:
         v = dv[col]
-        print(f"  {col:<20} {v.min():.3f} - {v.max():.3f}  (mean={v.mean():.3f})")
-    print(f"  Saved: {out}")
+        print(f"{col:<20} {v.min():.3f} - {v.max():.3f}  (mean={v.mean():.3f})")
+    print(f"Saved: {out}")
     print("=" * 55)
     return dv
-
 
 def main():
     p = argparse.ArgumentParser()

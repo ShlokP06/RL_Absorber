@@ -53,8 +53,7 @@ def load(paths: list[str]) -> tuple[np.ndarray, np.ndarray]:
 def make_loaders(
     X: np.ndarray, y: np.ndarray, batch: int, seed: int = 42
 ) -> tuple:
-    """Split data and build DataLoaders. Scalers are NOT saved here — caller saves
-    them atomically after the model is written, so the pair stays in sync."""
+    """Split data 70/15/15 and return (train_dl, val_dl, test_dl, sx, sy)."""
     rng = np.random.default_rng(seed)
     idx = rng.permutation(len(X))
     nv = int(len(X) * 0.15)
@@ -89,11 +88,8 @@ def train(args) -> None:
     torch.manual_seed(42)
     np.random.seed(42)
 
-    log.info("=" * 55)
-    log.info("SURROGATE TRAINING")
-    log.info("=" * 55)
-    log.info("  Inputs : %s", X_COLS)
-    log.info("  Outputs: %s", Y_COLS)
+    log.info("Inputs : %s", X_COLS)
+    log.info("Outputs: %s", Y_COLS)
 
     X, y = load(args.data)
     train_dl, val_dl, test_dl, sx, sy = make_loaders(X, y, args.batch)
@@ -140,8 +136,7 @@ def train(args) -> None:
                 break
 
     model.load_state_dict(best_state)
-    # Save model then scalers together — keeps the artifact pair in sync.
-    # If this block is interrupted, neither or both are written.
+    # save model then scalers atomically so the pair stays in sync
     torch.save({"state_dict": model.state_dict(), "width": args.width},
                OUT_DIR / "model.pt")
     joblib.dump((sx, sy), OUT_DIR / "scalers.pkl")

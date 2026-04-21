@@ -1,0 +1,14 @@
+fastapi>=0.111,<1
+uvicorn[standard]>=0.29,<1
+websockets>=12,<14
+python-dotenv>=1.0,<2
+pydantic>=2.0,<3
+
+# RL stack (must already be installed for the project)
+torch>=2.0,<3
+stable-baselines3>=2.3,<3
+sb3-contrib>=2.3,<3
+numpy>=1.24,<2
+gymnasium>=0.29,<1.0
+scikit-learn>=1.3,<2
+joblib>=1.3

@@ -1,0 +1,47 @@
+services:
+
+  # ── FastAPI backend + PPO-LSTM inference ─────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Set USE_CUDA=1 to pull CUDA 12.1 torch wheels instead of CPU-only.
+        # Requires nvidia-container-toolkit on the host.
+        USE_CUDA: ${USE_CUDA:-0}
+    image: adsorber-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist downloaded models across container restarts.
+      # On first run models are downloaded; subsequent starts skip the download.
+      - models_cache:/app/models
+    environment:
+      - STEP_INTERVAL=0.5
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s    # allow time for model download on first run
+
+  # ── React / Vite frontend ─────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./demo/frontend
+      dockerfile: Dockerfile
+    image: adsorber-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      # Points vite's proxy at the backend service (Docker internal network)
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  # Named volume so models survive container rebuilds
+  models_cache:

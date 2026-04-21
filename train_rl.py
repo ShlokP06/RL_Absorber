@@ -48,8 +48,6 @@ log = logging.getLogger(__name__)
 RL_DIR = Path("models/rl")
 
 
-# ── Learning rate schedule ───────────────────────────────────────────────────
-
 def linear_schedule(initial_value: float):
     """Linear decay from initial_value → 0 over training."""
     def func(progress_remaining: float) -> float:
@@ -57,13 +55,10 @@ def linear_schedule(initial_value: float):
     return func
 
 
-# ── Picklable env factory (required for SubprocVecEnv on Windows) ────────────
-
+# Named function (not lambda) required for SubprocVecEnv pickling on Windows.
 def _make_env(**kwargs):
     return Monitor(CCUEnv(**kwargs))
 
-
-# ── Curriculum callback ──────────────────────────────────────────────────────
 
 class CurriculumCallback(BaseCallback):
 
@@ -85,8 +80,7 @@ class CurriculumCallback(BaseCallback):
         return True
 
 class DomainMetricsCallback(BaseCallback):
-    """Logs capture_rate, E_specific_GJ, flood_fraction to TensorBoard each
-    rollout by averaging the most recent episode info dicts."""
+    """Logs capture_rate, E_specific_GJ, flood_fraction to TensorBoard per rollout."""
 
     def __init__(self) -> None:
         super().__init__(verbose=0)
@@ -109,17 +103,8 @@ class DomainMetricsCallback(BaseCallback):
         self._ep_infos.clear()
 
 
-# ── Syncing EvalCallback ─────────────────────────────────────────────────────
-
 class SyncEvalCallback(EvalCallback):
-    """EvalCallback that keeps the eval VecNormalize obs statistics in sync
-    with the training env before each evaluation pass.
-
-    Without this, the eval env starts from an uninitialised (all-zeros)
-    running mean/variance, so the policy sees a different obs distribution
-    during evaluation than during training — making early eval scores
-    unreliable and best-model selection biased.
-    """
+    """EvalCallback that syncs VecNormalize obs stats from training env before each eval pass."""
 
     def _on_step(self) -> bool:
         if (isinstance(self.training_env, VecNormalize) and
@@ -128,24 +113,10 @@ class SyncEvalCallback(EvalCallback):
         return super()._on_step()
 
 
-# ── Evaluation (handles RecurrentPPO + VecEnv correctly) ─────────────────────
-
 def evaluate(model: RecurrentPPO, env: VecNormalize, n_episodes: int = 200) -> pd.DataFrame:
-    """
-    Evaluate RecurrentPPO with proper LSTM state tracking.
-    Uses all VecEnv workers in parallel for fast evaluation.
-
-    Args:
-        model: Trained RecurrentPPO model.
-        env: VecNormalize-wrapped evaluation environment.
-        n_episodes: Number of complete episodes to collect.
-
-    Returns:
-        DataFrame of per-episode metrics.
-    """
+    """Run n_episodes with proper LSTM state tracking. Returns per-episode metrics DataFrame."""
     records: list[dict] = []
 
-    # SB3 VecEnv.reset() returns ndarray (not tuple)
     obs = env.reset()
     if isinstance(obs, tuple):
         obs = obs[0]
@@ -159,7 +130,6 @@ def evaluate(model: RecurrentPPO, env: VecNormalize, n_episodes: int = 200) -> p
             obs, state=lstm_states, episode_start=episode_starts,
             deterministic=True,
         )
-        # SB3 VecEnv.step() returns 4 values: (obs, rewards, dones, infos)
         obs, rewards, dones, infos = env.step(actions)
         episode_starts = dones.copy()
 
@@ -195,8 +165,6 @@ def evaluate(model: RecurrentPPO, env: VecNormalize, n_episodes: int = 200) -> p
     return df
 
 
-# ── Training ─────────────────────────────────────────────────────────────────
-
 def train(args) -> None:
     RL_DIR.mkdir(parents=True, exist_ok=True)
     Path("logs").mkdir(exist_ok=True)
@@ -208,8 +176,6 @@ def train(args) -> None:
                     "Install PyTorch+CUDA: pip install torch --index-url "
                     "https://download.pytorch.org/whl/cu121")
 
-    # DummyVecEnv is default: single-process, no pickling issues, stable on
-    # all platforms. SubprocVecEnv available via --subproc for heavier envs.
     VecCls = SubprocVecEnv if args.subproc else DummyVecEnv
 
     env_kwargs = dict(
@@ -221,6 +187,7 @@ def train(args) -> None:
         lam_integral    = args.lam_I,
         lam_energy_int  = args.lam_Ie,
         lam_above       = args.lam_above,
+        lam_over        = args.lam_over,
         lam_flood       = args.lam_flood,
         step_prob       = args.step_prob,
         actuator_lag    = True,
@@ -236,9 +203,6 @@ def train(args) -> None:
         norm_obs=True, norm_reward=True, clip_obs=10.0, clip_reward=10.0,
     )
 
-    # Eval envs: always DummyVecEnv (lightweight, no subprocess overhead).
-    # SyncEvalCallback keeps obs_rms in sync with the training env so the
-    # eval policy sees the same normalization as during training.
     eval_kwargs = {
         **env_kwargs,
         "step_prob": 0.0,
@@ -253,7 +217,6 @@ def train(args) -> None:
         norm_obs=True, norm_reward=False, clip_obs=10.0,
     )
 
-    # batch_size must evenly divide n_envs * n_steps
     buffer_size = args.n_envs * args.n_steps
     batch_size = min(args.batch_size, buffer_size)
     while buffer_size % batch_size != 0:
@@ -287,7 +250,6 @@ def train(args) -> None:
         model = RecurrentPPO.load(str(resume_path), env=train_env,
                                   device=device, verbose=1,
                                   tensorboard_log="logs/")
-        # Restore VecNormalize stats if available alongside the checkpoint
         vecnorm_resume = RL_DIR / "vecnorm.pkl"
         if vecnorm_resume.exists():
             train_env = VecNormalize.load(str(vecnorm_resume), train_env.venv)
@@ -339,8 +301,6 @@ def train(args) -> None:
     log.info("Saved: results/eval_results.csv")
 
 
-# ── Eval only ────────────────────────────────────────────────────────────────
-
 def eval_only(args) -> None:
     eval_kwargs = dict(
         model_path=args.model_path, scaler_path=args.scaler_path,
@@ -370,8 +330,6 @@ def eval_only(args) -> None:
     log.info("Saved: results/eval_results.csv")
 
 
-# ── Entry point ──────────────────────────────────────────────────────────────
-
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -394,6 +352,8 @@ def main() -> None:
                    help="Energy integral weight (reduced 4x: don't fear high energy when capture needs it)")
     p.add_argument("--lam-above",   type=float, default=0.30,
                    help="Above-target bonus weight (3x: strong incentive to stay above 85-90%%)")
+    p.add_argument("--lam-over",    type=float, default=0.05,
+                   help="Over-capture penalty weight: discourages capture above 95%% (Option B)")
     p.add_argument("--lam-flood",   type=float, default=0.10,
                    help="Flood soft penalty (reduced: hard constraint does the safety work)")
     p.add_argument("--step-prob",   type=float, default=0.04)

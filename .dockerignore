@@ -1,0 +1,36 @@
+# Git
+.git/
+.gitignore
+
+# Python caches
+__pycache__/
+*.py[cod]
+.eggs/
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Model artifacts (downloaded at container startup, not baked in)
+models/
+
+# Training outputs
+logs/
+results/
+data/
+
+# Frontend (built by its own Dockerfile)
+demo/frontend/node_modules/
+demo/frontend/dist/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
+CLAUDE.md
