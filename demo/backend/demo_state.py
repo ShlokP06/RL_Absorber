@@ -101,7 +101,7 @@ class DemoState:
 
         self.frozen:        bool  = False
         self._manual_dist:  Optional[tuple] = None
-        self.lambda_energy: float = 0.12
+        self.lambda_energy: float = 0.18
 
         # EMA action smoothing — prevents high-frequency oscillation near constraint boundaries
         self._smooth_action = np.zeros((1, 4), dtype=np.float32)
@@ -163,7 +163,7 @@ class DemoState:
         pid_result = self.pid_sim.step(G_sync, y_sync)
 
         rl_result = {
-            "cap":    round(min(raw.cap, 98.0), 3),
+            "cap":    round(raw.cap, 3),
             "eng":    round(raw.eng,    4),
             "G":      round(raw.G,      4),
             "y":      round(raw.y,      4),

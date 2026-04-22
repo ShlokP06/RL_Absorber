@@ -66,7 +66,7 @@ class PIDSimulator:
       - Lower T_L_in   → better VLE driving force
     """
 
-    CAP_SP: float = 90.0   # capture rate setpoint [%]
+    CAP_SP: float = 95.0   # capture rate setpoint [%]
     IC_NOM: float = 38.0   # intercooler temp fixed [°C]
 
     def __init__(self, surrogate) -> None:
