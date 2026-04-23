@@ -10,7 +10,7 @@ POST /reset              — reset both sims, return initial snapshot
 POST /step               — manual single step (normally auto-stepped)
 POST /set_disturbance    — {G_gas, y_CO2_in} override
 POST /clear_disturbance  — remove manual override
-POST /attack             — slam G_gas→1.2, y_CO2_in→0.14
+POST /attack             — slam G_gas→1.51, y_CO2_in→0.04
 POST /set_lambda         — {lambda_energy} live Pareto tuning
 POST /freeze             — {frozen: bool}
 POST /toggle_controller  — toggle frozen state
@@ -168,10 +168,10 @@ async def clear_disturbance():
 
 @app.post("/attack")
 async def attack_plant():
-    """Push G_gas to 1.20 and y_CO2_in to 0.14 — the 'wow moment'."""
+    """Push G_gas to 1.51 and y_CO2_in to 0.04 — the 'wow moment'."""
     async with sim_lock:
         demo.attack_plant()
-    return {"status": "ok", "G_gas": 1.20, "y_CO2_in": 0.14}
+    return {"status": "ok", "G_gas": 1.51, "y_CO2_in": 0.04}
 
 
 @app.post("/reset_impact")

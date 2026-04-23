@@ -267,8 +267,8 @@ class DemoState:
         self._manual_dist = None
 
     def attack_plant(self) -> None:
-        """Push G_gas to 1.2 and y_CO2_in to 0.14 — the demo 'wow moment'."""
-        self.set_disturbance(1.20, 0.14)
+        """Push G_gas to 1.51 and y_CO2_in to 0.04 — the demo 'wow moment'."""
+        self.set_disturbance(1.51, 0.04)
         self.lstm_states = None
         self.episode_starts[:] = True
         self._smooth_action[:] = 0.0
