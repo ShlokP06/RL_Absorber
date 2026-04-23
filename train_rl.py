@@ -38,7 +38,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import (
     BaseCallback, EvalCallback, CheckpointCallback,
 )
-from stable_baselines3.common.utils import sync_envs_normalization
+from stable_baselines3.common.vec_env import sync_envs_normalization
 from sb3_contrib import RecurrentPPO
 
 from src.env import CCUEnv
