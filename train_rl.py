@@ -38,14 +38,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import (
     BaseCallback, EvalCallback, CheckpointCallback,
 )
-try:
-    from stable_baselines3.common.utils import sync_envs_normalization
-except ImportError:
-    from copy import deepcopy
-    def sync_envs_normalization(train_env, eval_env) -> None:
-        """Fallback for SB3 >= 2.0 where the helper was removed."""
-        eval_env.obs_rms = deepcopy(train_env.obs_rms)
-        eval_env.ret_rms = deepcopy(train_env.ret_rms)
+from stable_baselines3.common.utils import sync_envs_normalization
 from sb3_contrib import RecurrentPPO
 
 from src.env import CCUEnv
