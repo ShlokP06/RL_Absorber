@@ -106,7 +106,10 @@ class SyncEvalCallback(EvalCallback):
     """EvalCallback that syncs VecNormalize obs stats from training env before each eval pass."""
 
     def _on_step(self) -> bool:
-        if (isinstance(self.training_env, VecNormalize) and
+        # Only sync when this step is actually going to trigger evaluation,
+        # not on every step (which wastes 512 deepcopies per rollout).
+        if (self.eval_freq > 0 and self.n_calls % self.eval_freq == 0 and
+                isinstance(self.training_env, VecNormalize) and
                 isinstance(self.eval_env, VecNormalize)):
             sync_envs_normalization(self.training_env, self.eval_env)
         return super()._on_step()
@@ -393,7 +396,7 @@ def main() -> None:
                    help="Path to checkpoint .zip to resume training from")
     p.add_argument("--eval-freq",     type=int, default=25_000)
     p.add_argument("--eval-envs",     type=int, default=8)
-    p.add_argument("--eval-episodes", type=int, default=50)
+    p.add_argument("--eval-episodes", type=int, default=20)
     p.add_argument("--eval-only",     action="store_true")
     p.add_argument("--model",         default="models/rl/best/best_model.zip")
     p.add_argument("--vecnorm",       default="models/rl/vecnorm.pkl",
