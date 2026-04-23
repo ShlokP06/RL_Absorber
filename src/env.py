@@ -67,7 +67,7 @@ class CCUEnv(gym.Env):
                  lam_integral    = 0.15,
                  lam_energy_int  = 0.08,
                  lam_above       = 0.10,
-                 lam_over        = 0.05,
+                 lam_over        = 0.25,
                  lam_flood       = 0.15,
                  step_prob       = 0.04,
                  actuator_lag    = True,
@@ -233,7 +233,7 @@ class CCUEnv(gym.Env):
         above = self.lam_above * min(max(0.0, self.cap - 85.0), 10.0) / 10.0
 
         # gentle penalty above 95% — doesn't fight capture incentive below that
-        over_pen = self.lam_over * max(0.0, self.cap - 95.0) / 5.0
+        over_pen = self.lam_over * (max(0.0, self.cap - 95.0) / 5.0) ** 2
 
         eng_pen = self.lam * (self.eng - 3.5) / 3.0
 
@@ -276,13 +276,15 @@ class CCUEnv(gym.Env):
             self.G_trend = self.y_trend = 0.0
         else:
             self._init_dist(carry=False)
-            self.L_cmd  = float(rng.uniform(self.L_lo,  self.L_hi))
             self.al_cmd = float(rng.uniform(self.al_lo, self.al_hi))
             self.T_cmd  = float(rng.uniform(self.T_lo,  self.T_hi))
             self.ic_cmd = float(rng.uniform(self.ic_lo, self.ic_hi))
+            self.al_act = self.al_cmd   # set before projection so _project_L sees real values
+            self.T_act  = self.T_cmd
+            self.L_cmd  = float(rng.uniform(self.L_lo,  self.L_hi))
             self.L_cmd  = self._project_L(self.L_cmd)
-            self.L_act  = self.L_cmd;  self.al_act = self.al_cmd
-            self.T_act  = self.T_cmd;  self.ic_act = self.ic_cmd
+            self.L_act  = self.L_cmd
+            self.ic_act = self.ic_cmd
 
         self.lam   = float(rng.uniform(*self.lam_range))
         self.drand = float(np.clip(1.0 + rng.normal(0, DRAND), 0.90, 1.10)) \

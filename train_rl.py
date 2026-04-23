@@ -89,8 +89,7 @@ class DomainMetricsCallback(BaseCallback):
     def _on_step(self) -> bool:
         infos = self.locals.get("infos", [])
         for info in infos:
-            if "episode" in info:
-                self._ep_infos.append(info)
+            self._ep_infos.append(info)   # collect every step, not just terminal
         return True
 
     def _on_rollout_end(self) -> None:
@@ -125,6 +124,10 @@ def evaluate(model: RecurrentPPO, env: VecNormalize, n_episodes: int = 200) -> p
     lstm_states = None
     episode_starts = np.ones(n_envs, dtype=bool)
 
+    # Per-env accumulators for within-episode averages
+    ep_caps: list[list[float]] = [[] for _ in range(n_envs)]
+    ep_engs: list[list[float]] = [[] for _ in range(n_envs)]
+
     while len(records) < n_episodes:
         actions, lstm_states = model.predict(
             obs, state=lstm_states, episode_start=episode_starts,
@@ -134,15 +137,29 @@ def evaluate(model: RecurrentPPO, env: VecNormalize, n_episodes: int = 200) -> p
         episode_starts = dones.copy()
 
         for i in range(n_envs):
+            info = infos[i]
+            if "capture_rate" in info:
+                ep_caps[i].append(float(info["capture_rate"]))
+            if "E_specific_GJ" in info:
+                ep_engs[i].append(float(info["E_specific_GJ"]))
+
             if dones[i] and len(records) < n_episodes:
-                info = infos[i]
                 rec: dict = {}
+                # Episode-averaged metrics (more meaningful than terminal-step snapshot)
+                if ep_caps[i]:
+                    rec["capture_rate"] = float(np.mean(ep_caps[i]))
+                if ep_engs[i]:
+                    rec["E_specific_GJ"] = float(np.mean(ep_engs[i]))
+                # Copy remaining scalar fields from terminal info
                 for k, v in info.items():
-                    if isinstance(v, (int, float, np.integer, np.floating)):
+                    if k not in ("capture_rate", "E_specific_GJ") and \
+                            isinstance(v, (int, float, np.integer, np.floating)):
                         rec[k] = float(v)
                 if "episode" in info:
                     rec["ep_reward"] = float(info["episode"]["r"])
                 records.append(rec)
+                ep_caps[i].clear()
+                ep_engs[i].clear()
 
     df = pd.DataFrame(records[:n_episodes])
     log.info("=" * 55)
@@ -342,18 +359,18 @@ def main() -> None:
     p.add_argument("--scaler-path", default="models/surrogate/scalers.pkl")
     p.add_argument("--max-steps",   type=int,   default=120)
     p.add_argument("--lam-min",     type=float, default=0.0)
-    p.add_argument("--lam-max",     type=float, default=0.10,
-                   help="Max energy weight (halved from 0.20 to reduce energy dominance)")
+    p.add_argument("--lam-max",     type=float, default=0.05,
+                   help="Max energy weight — low keeps capture dominant over energy")
     p.add_argument("--lam-smooth",  type=float, default=0.015,
                    help="Smoothness penalty (lowered to allow faster recovery actions)")
-    p.add_argument("--lam-I",       type=float, default=0.30,
-                   help="Capture deficit integral weight (doubled: heavy penalty for time below 90%%)")
+    p.add_argument("--lam-I",       type=float, default=0.40,
+                   help="Capture deficit integral weight — higher drives faster recovery below 90%%")
     p.add_argument("--lam-Ie",      type=float, default=0.02,
                    help="Energy integral weight (reduced 4x: don't fear high energy when capture needs it)")
-    p.add_argument("--lam-above",   type=float, default=0.30,
-                   help="Above-target bonus weight (3x: strong incentive to stay above 85-90%%)")
-    p.add_argument("--lam-over",    type=float, default=0.05,
-                   help="Over-capture penalty weight: discourages capture above 95%% (Option B)")
+    p.add_argument("--lam-above",   type=float, default=0.40,
+                   help="Above-target bonus weight — steeper gradient pulling agent into 85-95%% zone")
+    p.add_argument("--lam-over",    type=float, default=0.25,
+                   help="Over-capture penalty weight (quadratic): discourages capture above 95%%")
     p.add_argument("--lam-flood",   type=float, default=0.10,
                    help="Flood soft penalty (reduced: hard constraint does the safety work)")
     p.add_argument("--step-prob",   type=float, default=0.04)
@@ -363,8 +380,8 @@ def main() -> None:
     p.add_argument("--timesteps",   type=int,   default=2_000_000)
     p.add_argument("--lr",          type=float, default=3e-4)
     p.add_argument("--n-envs",      type=int,   default=16)
-    p.add_argument("--n-steps",     type=int,   default=256,
-                   help="Steps per env per rollout (>= max_steps for full episodes)")
+    p.add_argument("--n-steps",     type=int,   default=512,
+                   help="Steps per env per rollout (~4 full episodes; better LSTM gradient estimates)")
     p.add_argument("--batch-size",  type=int,   default=512,
                    help="Mini-batch size (auto-adjusted to divide buffer)")
     p.add_argument("--n-epochs",    type=int,   default=10)

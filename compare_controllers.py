@@ -304,10 +304,11 @@ def run_scenario(
         obs = _normalize_obs(norm_env, raw_obs)
         rl_env.G = G; rl_env.y = y
         cap_n = info_rl["capture_rate"] / 100.0
-        above = rl_env.lam_above * max(0.0, info_rl["capture_rate"] - 85.0) / 15.0
+        above = rl_env.lam_above * min(max(0.0, info_rl["capture_rate"] - 85.0), 10.0) / 10.0
+        over_pen = rl_env.lam_over * (max(0.0, info_rl["capture_rate"] - 95.0) / 5.0) ** 2
         eng_pen = lam * (info_rl["E_specific_GJ"] - 3.5) / 3.0
         da2 = float(np.mean((action - prev_rl_action) ** 2))
-        rl_reward = cap_n ** 2 + above - eng_pen - rl_env.lam_smooth * da2
+        rl_reward = cap_n ** 2 + above - over_pen - eng_pen - rl_env.lam_smooth * da2
         prev_rl_action = action.copy()
         data["rl_capture"][t] = info_rl["capture_rate"]
         data["rl_energy"][t]  = info_rl["E_specific_GJ"]
